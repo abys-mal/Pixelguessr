@@ -103,6 +103,10 @@ REST_FRAMEWORK = {
         "auth": "10/minute",
         "submission": "20/day",
         "report": "10/day",
+        "csrf": "600/minute",
+        "game_start": "30/minute",
+        "game_read": "600/minute",
+        "game_guess": "600/minute",
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 24,
@@ -154,3 +158,16 @@ SECURE_HSTS_PRELOAD = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 # Configure SECURE_PROXY_SSL_HEADER only when a trusted proxy strips client values.
+
+# Snapshot these values per round so configuration changes do not alter live games.
+SINGLEPLAYER_GRID_SIZE = env.int("SINGLEPLAYER_GRID_SIZE", default=20)
+SINGLEPLAYER_REVEAL_SECONDS = env.int("SINGLEPLAYER_REVEAL_SECONDS", default=30)
+SINGLEPLAYER_ROUND_TTL_SECONDS = env.int("SINGLEPLAYER_ROUND_TTL_SECONDS", default=86400)
+if not 5 <= SINGLEPLAYER_GRID_SIZE <= 40:
+    raise ImproperlyConfigured("SINGLEPLAYER_GRID_SIZE must be between 5 and 40.")
+if not 1 <= SINGLEPLAYER_REVEAL_SECONDS <= 120:
+    raise ImproperlyConfigured("SINGLEPLAYER_REVEAL_SECONDS must be between 1 and 120.")
+if SINGLEPLAYER_ROUND_TTL_SECONDS <= SINGLEPLAYER_REVEAL_SECONDS:
+    raise ImproperlyConfigured("Singleplayer expiry must be longer than the reveal.")
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    DATABASES["default"]["OPTIONS"] = {"timeout": 20}

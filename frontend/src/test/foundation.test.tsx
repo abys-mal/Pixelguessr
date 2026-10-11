@@ -23,13 +23,17 @@ function page(path = '/') {
   );
 }
 
-describe('Phase 1 experience', () => {
+describe('Established experience', () => {
   it('shows all modes and honest availability', () => {
     page();
     for (const mode of ['Ranked Duel', 'Singleplayer', 'Parties'])
       expect(screen.getByRole('heading', { name: mode })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /Explore mode/ })).toHaveLength(3);
-    expect(screen.getByText(/Gameplay arrives in Phase 2/)).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /Explore mode/ })).toHaveLength(2);
+    expect(screen.getByRole('link', { name: /Play singleplayer/ })).toHaveAttribute(
+      'href',
+      '/singleplayer',
+    );
+    expect(screen.getAllByText('Coming later')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /^play$/i })).not.toBeInTheDocument();
   });
   it('makes unavailable gameplay explicitly disabled', () => {

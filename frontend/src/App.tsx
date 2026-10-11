@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
+import { Singleplayer } from './pages/Singleplayer';
 import { Mode } from './pages/Mode';
 import { AuthPage } from './pages/Auth';
 import { Profile, Settings } from './pages/Account';
@@ -13,6 +14,7 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
+        <Route path="singleplayer" element={<Singleplayer />} />
         <Route path="modes/:modeId" element={<Mode />} />
         <Route path="login" element={<AuthPage key="login" />} />
         <Route path="register" element={<AuthPage key="register" register />} />

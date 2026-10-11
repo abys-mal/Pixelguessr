@@ -23,6 +23,8 @@ from .serializers import (
 
 class CsrfView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "csrf"
 
     def get(self, request):
         return Response({"csrfToken": get_token(request)})

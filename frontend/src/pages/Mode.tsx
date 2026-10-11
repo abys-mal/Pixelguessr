@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { Badge, PageHeading } from '../components/ui';
 import { modes } from '../modes';
 
@@ -11,13 +11,14 @@ export function Mode() {
         <Link to="/">Back to the homepage</Link>
       </PageHeading>
     );
+  if (mode.id === 'singleplayer') return <Navigate to="/singleplayer" replace />;
   return (
     <>
       <PageHeading eyebrow={mode.eyebrow} title={mode.label}>
         {mode.description}
       </PageHeading>
       <section className={`panel mode-detail ${mode.className}`}>
-        <Badge>Coming in Phase 2</Badge>
+        <Badge>Coming later</Badge>
         <h2>How it will work</h2>
         <ul className="rules-list">
           {mode.rules.map((rule) => (

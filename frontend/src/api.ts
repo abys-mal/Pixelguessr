@@ -35,9 +35,21 @@ export interface Page<T> {
   results: T[];
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function errorMessage(body: unknown, status: number): string {
   if (typeof body === 'object' && body !== null) {
     return Object.entries(body)
+      .filter(([key]) => key !== 'code' && key !== 'round' && key !== 'result')
       .map(([key, value]) => {
         const content = Array.isArray(value) ? value.join(' ') : String(value);
         return ['detail', 'non_field_errors'].includes(key)
@@ -68,6 +80,10 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(errorMessage(body, response.status));
+  if (!response.ok) {
+    const code =
+      typeof body === 'object' && body !== null && 'code' in body ? String(body.code) : undefined;
+    throw new ApiError(errorMessage(body, response.status), response.status, code);
+  }
   return body as T;
 }

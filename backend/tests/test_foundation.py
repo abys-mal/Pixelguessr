@@ -30,10 +30,10 @@ def test_guest_identity_constraints(user):
         Participant(match=ranked, guest=guest).full_clean()
 
 
-def test_modes_are_explicitly_unavailable(client):
+def test_only_singleplayer_is_available(client):
     body = client.get("/api/modes/").json()
-    assert body["gameplay_available"] is False
-    assert all(not mode["available"] for mode in body["modes"])
+    assert body["gameplay_available"] is True
+    assert {mode["id"] for mode in body["modes"] if mode["available"]} == {"singleplayer"}
     assert {mode["id"] for mode in body["modes"]} == {"ranked", "singleplayer", "party"}
 
 

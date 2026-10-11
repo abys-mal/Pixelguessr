@@ -3,6 +3,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import Category, ImageSubmission
+from .review import review_images
 
 admin.site.register(Category)
 
@@ -42,7 +43,7 @@ class ImageSubmissionAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     def review(self, request, queryset, status):
-        queryset.update(status=status, reviewed_by=request.user, reviewed_at=timezone.now())
+        review_images(queryset, request.user, status)
 
     @admin.action(description="Approve selected submissions")
     def approve(self, request, queryset):

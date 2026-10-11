@@ -8,7 +8,7 @@ export function Leaderboards() {
         A future home for the sharpest eyes in Pixelguessr.
       </PageHeading>
       <EmptyState title="The first duel is still ahead.">
-        Ranked gameplay and standings arrive in Phase 2. No rankings have been generated yet.
+        Ranked gameplay and standings are coming later. No rankings have been generated yet.
       </EmptyState>
       <section className="panel tier-panel">
         <h2>The ranked journey</h2>
@@ -29,7 +29,7 @@ export function About() {
   return (
     <>
       <PageHeading eyebrow="FIND THE BIGGER PICTURE" title="A game of seeing what’s there.">
-        Pixelguessr is a multiplayer image-guessing game in development.
+        Pixelguessr is a curated image-guessing game. Singleplayer is ready to play.
       </PageHeading>
       <section className="panel prose">
         <h2>From pixels to perspective</h2>
@@ -39,8 +39,8 @@ export function About() {
         </p>
         <h2>Play your way</h2>
         <p>
-          Practice in singleplayer, share a round with friends in parties, or compete in ranked
-          duels. <Link to="/">Explore each mode’s rules.</Link> Gameplay is scheduled for Phase 2.
+          Play <Link to="/singleplayer">singleplayer</Link> with unlimited guesses and no penalties.
+          Parties and ranked duels are coming later. <Link to="/">Explore the modes.</Link>
         </p>
         <h2>A thoughtfully curated library</h2>
         <p>

@@ -9,4 +9,4 @@ class ModeList(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        return Response({"phase": 1, "gameplay_available": False, "modes": public_rules()})
+        return Response({"phase": 2, "gameplay_available": True, "modes": public_rules()})

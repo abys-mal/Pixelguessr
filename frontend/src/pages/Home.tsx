@@ -22,8 +22,8 @@ export function Home() {
             <br className="desktop-break" /> connect the dots, and find the bigger picture.
           </p>
           <div className="hero-note">
-            <Badge tone="mint">In development</Badge>
-            <span>Explore the modes. Gameplay arrives in Phase 2.</span>
+            <Badge tone="mint">Ready to play</Badge>
+            <span>Singleplayer is here. A fresh picture is waiting.</span>
           </div>
         </div>
         <figure className="reveal-art">
@@ -73,14 +73,20 @@ export function Home() {
                 <span className="mode-icon" aria-hidden="true">
                   {mode.icon}
                 </span>
-                <Badge>Phase 2</Badge>
+                <Badge tone={mode.id === 'singleplayer' ? 'mint' : ''}>
+                  {mode.id === 'singleplayer' ? 'Playable' : 'Coming later'}
+                </Badge>
               </div>
               <p className="eyebrow">{mode.eyebrow}</p>
               <h3>{mode.label}</h3>
               <p className="card-description">{mode.description}</p>
               <p className="card-meta">{mode.meta}</p>
-              <Link className="mode-link" to={`/modes/${mode.id}`}>
-                Explore mode <span aria-hidden="true">↗</span>
+              <Link
+                className="mode-link"
+                to={mode.id === 'singleplayer' ? '/singleplayer' : `/modes/${mode.id}`}
+              >
+                {mode.id === 'singleplayer' ? 'Play singleplayer' : 'Explore mode'}{' '}
+                <span aria-hidden="true">↗</span>
               </Link>
               <span className="card-number" aria-hidden="true">
                 0{index + 1}

@@ -61,7 +61,7 @@ export function Layout() {
       </main>
       <footer className="site-footer">
         <span>Find the bigger picture.</span>
-        <span>Pixelguessr · Phase 1 foundation</span>
+        <span>Pixelguessr · Singleplayer</span>
         <Link to="/about">About & rules</Link>
       </footer>
     </div>

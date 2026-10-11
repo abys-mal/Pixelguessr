@@ -1,26 +1,26 @@
 # Architecture
 
-One Django application, one React application, PostgreSQL, and Redis. No microservices or background worker are necessary for Phase 1.
+One Django application and one React application. Local Phase 2 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. No microservices or background worker are needed.
 
 ```text
 Browser → Vite development proxy / production edge → Django ASGI
                                                     ├─ HTTP /api + /admin
                                                     ├─ Channels routing (currently rejects matches)
-                                                    ├─ PostgreSQL: durable domain data
-                                                    ├─ Redis: shared cache/throttles + channel layer
+                                                    ├─ SQLite / PostgreSQL: durable domain data
+                                                    ├─ In-memory / Redis: cache/throttles + channel layer
                                                     └─ Private filesystem / S3: normalized uploads
 ```
 
 ## Responsibility boundaries
 
-| Backend app | Responsibility |
-| --- | --- |
-| accounts | Custom users, public/private serializers, sessions, account permissions, verified titles |
-| library | Category and submission persistence, validated upload pipeline, private references, staff review |
-| moderation | Reports, audited sanctions, active restriction policy, warning acknowledgment |
-| games | Game rules, persistence scaffold, unavailable mode API, rejecting WebSocket route |
-| core | Minimal liveness and database/cache readiness |
-| config | Settings, environment, URL/ASGI wiring |
+| Backend app | Responsibility                                                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| accounts    | Custom users, public/private serializers, sessions, account permissions, verified titles                                           |
+| library     | Category and submission persistence, validated upload pipeline, private references, staff review                                   |
+| moderation  | Reports, audited sanctions, active restriction policy, warning acknowledgment                                                      |
+| games       | Authoritative singleplayer services, normalized guesses, private reveal compositor, mode availability, future multiplayer scaffold |
+| core        | Minimal liveness and database/cache readiness                                                                                      |
+| config      | Settings, environment, URL/ASGI wiring                                                                                             |
 
 React uses route-level pages, reusable panels/badges/status messages, one session context, and one CSRF-aware API helper. CSS variables, shared layout classes, and breakpoints support desktop/mobile. Forms call actual APIs; other pages explicitly describe future functionality. The decorative reveal illustration is static and labeled as a visual concept.
 
@@ -28,15 +28,15 @@ React uses route-level pages, reusable panels/badges/status messages, one sessio
 
 User UUIDs are established in the first migration. Username/email uniqueness is case-insensitive at both validation and database levels. Public profiles omit email and provisional ratings. Clients cannot edit staff status, tiers, titles, or ratings.
 
-Submissions require exactly one image reference. Uploaded filenames are opaque, files are normalized, and external URLs are stored without fetching. The public catalog is an explicit minimal allowlist of ID, category, and creation time. A submitted image is private until reviewed; even approved raw storage references remain private in Phase 1. Review requires staff identity and a timestamp. Staff previews have no-store caching and authorization on every request.
+Submissions require exactly one image reference. Uploaded filenames are opaque, files are normalized, and external URLs are stored without fetching. The public catalog is an explicit minimal allowlist of ID, category, and creation time. A submitted image is private until reviewed; even approved raw storage references remain private in Phase 2. Review requires staff identity and a timestamp. Staff previews have no-store caching and authorization on every request.
 
-GuestIdentity does not authenticate today. In Phase 2 its random identifier must be bound to a signed server session, expire, and be checked on every party action. Never accept a client-provided user/guest ID as authentication.
+GuestIdentity is bound to the Django server session, with a seven-day identity/session lifetime. Every round read, image request, and guess checks session ownership; UUID knowledge alone grants no access. Accounts own their participant directly, and can also finish a guest round started in the same session. Clearing or losing cookies loses guest access. Never accept client-provided user/guest IDs as authentication.
 
-Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked mode’s one-guess limit and membership checks are represented in model `clean()`; Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Phase 2 services must validate and lock rows in transactions; no write gameplay endpoints are exposed now.
+Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked mode’s one-guess limit and membership checks are represented in model `clean()`; Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Ranked/party constraints remain scaffolds.
 
 Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, but acknowledgment lifts the warning gate. Probation disables submissions and will disable ranked when matchmaking exists. Suspension/closure deny authentication and retrieval of existing session users via the custom auth backend. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
 
-## Phase 2 implementation contract
+## Future multiplayer implementation contract
 
 - The server creates a private reveal order and authoritative start/deadline. It controls randomness, reveal progress, correctness, cooldowns, scores, spectators, wins, and final Elo.
 - Publish only opaque image-delivery tokens, revealed tile coordinates, public participant summaries, authoritative deadlines, and game state. Do not send canonical answers, synonyms, private storage references, or revealing attribution/provenance until an intentional post-round disclosure.
@@ -49,4 +49,14 @@ Moderation checks start times, expiry, and audited revocation. Warnings remain a
 
 ## Verification scope
 
-Local regression tests use SQLite/in-memory services; CI is configured for PostgreSQL/Redis. Compose configuration validation runs in CI. Private S3 connectivity and deployment-specific proxy/TLS/storage policy require integration verification in the deployment environment. No gameplay correctness claim is made by Phase 1 tests.
+Local regression tests use SQLite/in-memory services; CI is configured for PostgreSQL/Redis. Compose configuration validation runs in CI. Private S3 connectivity and deployment-specific proxy/TLS/storage policy require integration verification in the deployment environment. Singleplayer tests verify gameplay and decoded masked-frame pixels; multiplayer and production integration remain unverified.
+
+## Singleplayer boundaries
+
+`games/services.py` owns session identity, approved hosted-image selection, private answer/synonym and configuration snapshots, randomized reveal order, expiry, idempotent starts, and serialized guess decisions. Reveal count is a pure function of stored start time and server clock. No timers/background jobs are required; state survives cache loss and server restart. Re-review is checked inside the start transaction.
+
+`games/reveal.py` prepares originals only on the server and paints every unrevealed tile opaque before lossless WebP encoding. Its private cache stores normalized source pixels, never a public URL. The endpoint authorizes every request, ignores client reveal-version/timing claims, returns no-store images, and refuses expired/abandoned rounds. Only the revealed prefix of the random order is public. Guess count and canonical completion disclosure are explicit allowlists; synonyms, storage names, image IDs, and source URLs are omitted.
+
+React `useSingleplayer` reconciles server snapshots, handles retry request IDs, polls and reconnects on focus/online, and rejects delayed polls that would undo success/new starts. Its countdown uses a server-clock anchor plus a monotonic cosmetic clock. `Reveal` fetches only masked frames, decodes them before swapping, then fades a decorative grid. Removing the CSS overlay cannot expose hidden pixels. Slow/offline delivery preserves the last confirmed frame until reconnection.
+
+Round expiry is 24 hours (configurable), rather than the 30-second reveal deadline. Full reveal does not end a round. Solved rounds persist with canonical answer, timing/counts and credit until another round is started; expired rounds reveal no answer. Starting another picture abandons the old active round. A future retention/cleanup command should remove old game/session records according to a documented retention policy.

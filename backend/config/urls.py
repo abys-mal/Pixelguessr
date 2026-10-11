@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/library/", include("library.urls")),
     path("api/moderation/", include("moderation.urls")),
     path("api/modes/", include("games.urls")),
+    path("api/games/singleplayer/", include("games.singleplayer_urls")),
 ]

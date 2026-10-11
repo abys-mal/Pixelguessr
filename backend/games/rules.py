@@ -17,7 +17,7 @@ class ModeRules:
 
 MODES = (
     ModeRules("ranked", "Ranked Duel", True, guess_limit=1, decisive_wins_to_finish=4),
-    ModeRules("singleplayer", "Singleplayer", False),
+    ModeRules("singleplayer", "Singleplayer", False, available=True),
     ModeRules(
         "party",
         "Parties",

@@ -43,7 +43,7 @@ export function Library() {
             }
           >
             {count
-              ? 'Approved images are ready for the future game. Browsing and reveals arrive in Phase 2.'
+              ? 'Approved hosted images are ready for singleplayer. Their subjects stay hidden until you solve the picture.'
               : 'No images have been published yet. Help build the first collection.'}
           </EmptyState>
         </>
