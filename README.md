@@ -1,0 +1,109 @@
+# Pixelguessr · Phase 1
+
+A runnable foundation for a curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`; PostgreSQL and Redis in Docker Compose. Gameplay is deliberately unavailable in this phase.
+
+## Implemented
+
+- Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. No fabricated player counts, rankings, or working-looking Play buttons.
+- Custom UUID user model from the first migration; password validation; registration, login, logout, profile reads, and display-name edits. Same-origin cookie sessions with CSRF protection, including anonymous login and registration.
+- Private curated image submissions by registered users: canonical answer, synonyms, category, source, license, attribution, external HTTPS references or validated uploads. Six initial categories are installed by migration. All submissions begin pending. Users can see only their own submissions.
+- Still JPEG/PNG/WebP validation (8 MB, 64–4096 px, 12 MP), re-encoding to WebP, stripped metadata, opaque UUID filenames, private local or S3-compatible storage, and an authenticated staff-only preview. The server never fetches a submitted URL.
+- Django Admin review/approval/rejection, reports, sanctions, and staff-verified Pro/Master/Legend titles. Warning acknowledgment works in account settings. Warnings expire after 90 days. Probation blocks submissions. Suspension/closure invalidate existing sessions, including staff sessions. Only superusers can reverse closure through Admin.
+- Answer-safe public catalog metadata, mode rules API, liveness/readiness, database migrations, dependency locks, formatting/linting, regression tests, and CI with PostgreSQL and Redis.
+
+## Scaffolded and deferred
+
+- Match, participant, expiring guest identity, round, per-round score/cooldown, and guess models. Guests are separate from user accounts. Round scores support negatives; cumulative scores are nonnegative.
+- ASGI and Channels/Redis routing. `/ws/matches/<uuid>/` rejects connections with code 4404; it does not accept or simulate a match. `/api/modes/` explicitly reports every mode unavailable.
+- Profile and leaderboard shells. There are no match statistics or ranked standings. Ranked tiers exist without Elo thresholds. Initial rating 1000 is a provisional storage default, not a finalized policy.
+- Phase 2: authoritative reveal/timing and secure image delivery; answer normalization; singleplayer rounds; party create/join/reconnect/spectators; ranked matchmaking and first-to-four duels; idempotent match-end Elo updates; guests in signed sessions; transactional game validation; match history and leaderboards.
+- Later account work: email verification, email/password changes and recovery, full appeals, and operational production deployment. No party chat is planned for V1.
+
+## Start with Docker (recommended full stack)
+
+Prerequisites: Docker Engine/Desktop with Compose v2. From the repository root:
+
+```powershell
+python scripts/setup_env.py
+docker compose up --build
+```
+
+Open http://localhost:5173. API liveness: http://localhost:8000/api/health/live/. Admin: http://localhost:8000/admin/.
+
+```powershell
+docker compose exec backend python manage.py createsuperuser
+docker compose exec backend pytest -q
+docker compose exec backend ruff check .
+docker compose exec backend ruff format --check .
+docker compose exec frontend npm test
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run format:check
+docker compose exec frontend npm run build
+```
+
+Compose runs migrations automatically before starting the ASGI development server and waits for database, cache, and API readiness. Code is mounted for reload. Services bind only to loopback. The Dockerfiles/Compose are development infrastructure; deployment needs a production edge and static asset serving. `docker compose down` stops services without deleting persistent volumes. If dependency locks change, rebuild images and renew the frontend anonymous/named modules volume as appropriate.
+
+## Start locally without Docker
+
+Prerequisites: Python 3.13, Node 22.12+ (Node 24 recommended). In PowerShell, from `C:/Users/actian/python code/Pixelguessr`:
+
+```powershell
+python scripts/setup_env.py --lite
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
+cd backend
+..\.venv\Scripts\python.exe manage.py migrate
+..\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+```
+
+In another terminal from the repository root:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. Vite proxies `/api` and `/ws` to Django; this preserves same-origin cookies and avoids unnecessary CORS configuration. Do not substitute a different frontend port without updating the CSRF origins.
+
+The lightweight mode is explicitly development-only: `DEBUG=True`, `USE_SQLITE=True`, `LOCAL_SERVICES=True`. The environment helper preserves an existing `.env`; edit those flags yourself if switching modes. To use real services locally, start `docker compose up -d db redis`, set both fallback flags to `False`, and keep the default localhost database/Redis URLs. SQLite and PostgreSQL are separate databases; switching does not copy data. On macOS/Linux use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.
+
+## Local checks
+
+From the repository root:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m pytest -q
+..\.venv\Scripts\python.exe -m ruff check .
+..\.venv\Scripts\python.exe -m ruff format --check .
+..\.venv\Scripts\python.exe manage.py check
+..\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+cd ../frontend
+npm run lint
+npm run format:check
+npm test
+npm run build
+```
+
+Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests cover CSRF/session rotation, uniqueness, moderation permissions, privacy, uploads, health failure handling, identity constraints, and deliberate WebSocket rejection. Frontend tests cover honest availability, submission access, routing, and CSRF transport.
+
+Pytest uses disposable upload-test files in `backend/.pytest_cache/tmp`, which it clears between runs. This keeps test files inside the project rather than depending on host temporary-directory permissions.
+
+Formatting: `python -m ruff format .` in backend; `npm run format` in frontend. Runtime dependencies are pinned in `backend/requirements.txt`, development tools in `requirements-dev.txt`, and npm resolutions in `frontend/package-lock.json`. `.in` files describe upgrade ranges; regenerate Python pins in a clean environment and test before updating.
+
+## Staff and storage
+
+Create a superuser, log into Django Admin, and open Image submissions. Inspect metadata and the private upload preview (or the external reference), then approve/reject. Public responses never contain answers, filenames, external image URLs, provenance URLs, or attribution that could reveal an answer. Attribution is retained privately for a future post-round disclosure API; the actual license must permit this game’s use before staff publish anything. Do not expose the private-media directory from a web server.
+
+For S3-compatible hosted storage, set `USE_S3=True`, `S3_BUCKET_NAME`, and `S3_REGION_NAME`. Set `S3_ENDPOINT_URL` for a compatible provider. Use IAM workload credentials where available, or the optional `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` environment variables. Keep bucket public access blocked; there is no public ACL or public media route. Staff previews stream through authorized Django views. Changing storage does not migrate existing files. An actual bucket connection requires your infrastructure/credentials and is not covered by local tests.
+
+Sanctions may be issued independently without escalation. Existing sanctions are immutable in Admin; the audited Revoke action permits early lifting (including a successful appeal recorded by staff). Full appeal intake is deferred. Reports currently require an authenticated account; guest reporting is deferred. New titles can supersede an existing verified title and are not derived automatically from rating.
+
+## Before production
+
+Set `DEBUG=False`, a unique random secret of at least 50 characters, exact `ALLOWED_HOSTS` and HTTPS `CSRF_TRUSTED_ORIGINS`, PostgreSQL, and Redis. In-memory fallbacks are rejected outside debug mode. Secure cookies, HTTPS redirect, HSTS, clickjacking protection, and content-type protection are configured. Run `python manage.py check --deploy`. Serve the built React output with history fallback and proxy `/api`, `/admin`, and `/ws`; collect and serve Admin static assets separately. Use Daphne against `config.asgi:application`; run migrations as a release step rather than per-worker startup. Terminate TLS at a trusted edge; configure the proxy SSL header only when that edge strips untrusted client values.
+
+Application throttles are a baseline usage policy, not a distributed atomic brute-force or DDoS defense. Add edge rate limits, a 10 MB request-body limit, trusted proxy IP handling, durable backups, upload quotas/cleanup, monitoring, secure staff access, and email verification/recovery before public launch. Keep PostgreSQL, Redis, secrets, and private storage off public networks. Production-oriented foundation does not mean production deployment is finished.
+
+See `docs/architecture.md` and `docs/api.md` for the boundaries and Phase 2 contracts.

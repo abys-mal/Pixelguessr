@@ -1,0 +1,48 @@
+export const modes = [
+  {
+    id: 'ranked',
+    label: 'Ranked Duel',
+    eyebrow: 'ONE ON ONE',
+    className: 'violet',
+    icon: '◇',
+    description: 'Two players. One guess. Trust your instinct.',
+    meta: 'Account required · First to 4 wins',
+    rules: [
+      'Registered accounts only. Ranked matchmaking only.',
+      'One guess per player per round. An incorrect guess immediately loses the round.',
+      'The first correct guess wins. Rounds without a winner are replayed.',
+      'First to four decisive round wins. Elo changes once, after the match.',
+    ],
+  },
+  {
+    id: 'singleplayer',
+    label: 'Singleplayer',
+    eyebrow: 'AT YOUR OWN PACE',
+    className: 'mint',
+    icon: '▧',
+    description: 'Follow the clues. Enjoy your own little aha moment.',
+    meta: 'Guests welcome · Unlimited guesses',
+    rules: [
+      'Guests and registered players are welcome.',
+      'Unlimited guesses with no penalties or cooldown.',
+      'Tiles disappear randomly over 30 seconds.',
+      'After the reveal, the image stays visible until you guess correctly.',
+    ],
+  },
+  {
+    id: 'party',
+    label: 'Parties',
+    eyebrow: 'BETTER TOGETHER',
+    className: 'peach',
+    icon: '✳',
+    description: 'A shared mystery. A friendly race to the answer.',
+    meta: 'Guests welcome · No party chat',
+    rules: [
+      'Guests and registered players are welcome. No party chat in V1.',
+      'Unlimited guesses. Incorrect guesses cost 50 points and trigger a two-second cooldown.',
+      'Correct guesses earn up to 1,000 points based on reveal progress.',
+      'Round scores may be negative; cumulative scores never fall below zero.',
+      'Correct players become spectators. A round ends early if everyone solves it.',
+    ],
+  },
+] as const;
