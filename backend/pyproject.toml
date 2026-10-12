@@ -3,7 +3,6 @@ DJANGO_SETTINGS_MODULE = "config.test_settings"
 python_files = ["test_*.py"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--basetemp=.pytest_cache/tmp"
 
 [tool.ruff]
 line-length = 100

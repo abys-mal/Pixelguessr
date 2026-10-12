@@ -73,7 +73,7 @@ npm run build
 
 Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests cover guest/account gameplay, CSRF and ownership, normalized synonyms, pixel-level reveal security/timing, guessing after full reveal, retries/expiry, snapshots, missing storage, and explicit fixture review, alongside the existing foundation regressions. Frontend tests cover gameplay, refresh, recovery, completion, empty/expired rounds, stale polling, availability, routing, and CSRF transport.
 
-Pytest uses disposable upload-test files in `backend/.pytest_cache/tmp`, which it clears between runs. This keeps test files inside the project rather than depending on host temporary-directory permissions.
+Upload tests use the built-in pytest `tmp_path` fixture. Pytest creates and manages temporary directories under the operating system temporary location on Windows and Linux; no custom base-temp directory or pre-existing `.pytest_cache` folder is required.
 
 Formatting: `python -m ruff format .` in backend; `npm run format` in frontend. Runtime dependencies are pinned in `backend/requirements.txt`, development tools in `requirements-dev.txt`, and npm resolutions in `frontend/package-lock.json`. `.in` files describe upgrade ranges; regenerate Python pins in a clean environment and test before updating.
 

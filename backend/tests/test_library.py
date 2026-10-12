@@ -121,7 +121,11 @@ def test_upload_reencoded_private_and_staff_preview(
     preview = client.get(f"/api/library/submissions/{image.pk}/preview/")
     assert preview.status_code == 200
     assert preview["Cache-Control"] == "private, no-store"
-    preview.close()
-    client.force_authenticate(user=None)
-    assert client.get(f"/api/library/submissions/{image.pk}/preview/").status_code == 403
-    assert client.get(f"/media/{image.image_file.name}").status_code == 404
+    try:
+        client.force_authenticate(user=None)
+        assert client.get(f"/api/library/submissions/{image.pk}/preview/").status_code == 403
+        assert client.get(f"/media/{image.image_file.name}").status_code == 404
+    finally:
+        # Closing a streaming response sends request_finished and may close a real
+        # database connection; finish all database assertions before cleanup.
+        preview.close()
