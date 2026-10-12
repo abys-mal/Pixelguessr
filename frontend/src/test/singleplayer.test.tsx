@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
@@ -160,6 +161,107 @@ afterEach(() => {
 });
 
 describe('Five-round singleplayer', () => {
+  it('keeps Enter guesses on the input/result and requires a fresh Enter to advance', async () => {
+    const user = userEvent.setup();
+    current = makeState();
+    page();
+    const input = await screen.findByLabelText('Your Guess');
+    expect(input).toHaveFocus();
+    await user.type(input, 'castle{Enter}');
+    await screen.findByText('Incorrect');
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue('');
+    await user.type(input, 'beacon{Enter>}');
+    const result = await screen.findByRole('heading', { name: 'Correct' });
+    expect(result).toHaveFocus();
+    await user.tab();
+    const next = screen.getByRole('button', { name: 'Next Round' });
+    expect(next).toHaveFocus();
+    expect(fireEvent.keyDown(next, { key: 'Enter', repeat: true })).toBe(false);
+    expect(gameApi.next).not.toHaveBeenCalled();
+    await user.keyboard('{/Enter}{Enter}');
+    await waitFor(() => expect(screen.getByLabelText('Your Guess')).toHaveFocus());
+    expect(gameApi.next).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Your Guess')).toHaveValue('');
+  });
+  it('focuses results after a mouse submission and the input after mouse Next Round', async () => {
+    const user = userEvent.setup();
+    current = makeState();
+    page();
+    await user.type(await screen.findByLabelText('Your Guess'), 'beacon');
+    await user.click(screen.getByRole('button', { name: 'Submit Guess' }));
+    expect(await screen.findByRole('heading', { name: 'Correct' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Next Round' }));
+    await waitFor(() => expect(screen.getByLabelText('Your Guess')).toHaveFocus());
+  });
+  it.each(['mouse', 'keyboard'])('moves focus through %s forfeits and new rounds', async (mode) => {
+    const user = userEvent.setup();
+    current = makeState();
+    current.round!.can_forfeit = true;
+    current.round!.revealed_count = 400;
+    current.round!.available_points = 0;
+    page();
+    await screen.findByLabelText('Your Guess');
+    const forfeit = screen.getByRole('button', { name: 'Forfeit Round' });
+    if (mode === 'mouse') await user.click(forfeit);
+    else {
+      await user.tab();
+      expect(forfeit).toHaveFocus();
+      await user.keyboard('{Enter}');
+    }
+    expect(await screen.findByRole('heading', { name: 'Forfeited' })).toHaveFocus();
+    const next = screen.getByRole('button', { name: 'Next Round' });
+    if (mode === 'mouse') await user.click(next);
+    else {
+      await user.tab();
+      expect(next).toHaveFocus();
+      await user.keyboard('{Enter}');
+    }
+    await waitFor(() => expect(screen.getByLabelText('Your Guess')).toHaveFocus());
+  });
+  it('supports all five rounds and Play Again entirely by keyboard', async () => {
+    const user = userEvent.setup();
+    current = makeState();
+    page();
+    for (let number = 1; number <= 5; number++) {
+      const input = await screen.findByLabelText('Your Guess');
+      expect(input).toHaveFocus();
+      await user.type(input, 'beacon{Enter}');
+      const heading = await screen.findByRole('heading', {
+        name: number === 5 ? 'Final Results' : 'Correct',
+      });
+      expect(heading).toHaveFocus();
+      await user.tab();
+      const action = screen.getByRole('button', {
+        name: number === 5 ? 'Play Again' : 'Next Round',
+      });
+      expect(action).toHaveFocus();
+      expect(fireEvent.keyDown(action, { key: 'Enter', repeat: true })).toBe(false);
+      await user.keyboard('{Enter}');
+    }
+    await waitFor(() => expect(screen.getByLabelText('Your Guess')).toHaveFocus());
+    expect(screen.getByText('Round 1 of 5')).toBeInTheDocument();
+    expect(screen.getByLabelText('Your Guess')).toHaveValue('');
+  });
+  it('does not steal keyboard focus when the active round refreshes', async () => {
+    const user = userEvent.setup();
+    current = makeState();
+    page();
+    await user.type(await screen.findByLabelText('Your Guess'), 'beacon');
+    await user.tab();
+    const submit = screen.getByRole('button', { name: 'Submit Guess' });
+    expect(submit).toHaveFocus();
+    current = {
+      ...current,
+      round: { ...current.round!, revealed_count: 100 },
+      session: { ...current.session!, revision: 2 },
+    };
+    fireEvent(window, new Event('online'));
+    await waitFor(() =>
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100'),
+    );
+    expect(submit).toHaveFocus();
+  });
   it('starts a guest game, shows counters, and accepts incorrect keyboard guesses', async () => {
     page();
     expect(screen.getByText('Guest')).toBeInTheDocument();
@@ -210,7 +312,7 @@ describe('Five-round singleplayer', () => {
     expect(screen.queryByRole('button', { name: 'Next Round' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Return Home' })).toHaveAttribute('href', '/');
     fireEvent.click(screen.getByRole('button', { name: 'Play Again' }));
-    await screen.findByLabelText('Your Guess');
+    expect(await screen.findByLabelText('Your Guess')).toHaveFocus();
     expect(current.session!.total_score).toBe(0);
     expect(screen.getByText('Round 1 of 5')).toBeInTheDocument();
   });

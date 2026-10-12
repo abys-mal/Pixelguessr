@@ -1431,6 +1431,10 @@ main {
   font-size: 21px !important;
   overflow-wrap: anywhere;
 }
+/* Result headings announce screen changes; interactive controls retain focus rings. */
+.result-focus-target:focus {
+  outline: none;
+}
 .final-results {
   max-width: 900px;
   margin: 0 auto;

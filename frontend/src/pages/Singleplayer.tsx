@@ -9,6 +9,10 @@ export function Singleplayer() {
   const { user } = useAuth();
   const [text, setText] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  const focusGuess = useCallback((node: HTMLInputElement | null) => {
+    input.current = node;
+    node?.focus();
+  }, []);
   const focusResult = useCallback((node: HTMLHeadingElement | null) => {
     node?.focus();
   }, []);
@@ -18,15 +22,23 @@ export function Singleplayer() {
   const expired = session?.status === 'expired';
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    const submittedInput = input.current;
     if (text.trim() && (await game.guess(text.trim()))) setText('');
-    input.current?.focus();
+    // Only refocus an incorrect/failed guess; completed rounds own their focus.
+    if (submittedInput?.isConnected) submittedInput.focus();
   };
   const begin = async (next = false) => {
     if (await (next ? game.next() : game.start())) setText('');
-    input.current?.focus();
   };
   return (
-    <section className="singleplayer-page" aria-labelledby="game-title">
+    <section
+      className="singleplayer-page"
+      aria-labelledby="game-title"
+      onKeyDownCapture={(event) => {
+        // A held Enter must not submit again or activate newly rendered controls.
+        if (event.key === 'Enter' && event.repeat) event.preventDefault();
+      }}
+    >
       <header className="game-heading">
         <div>
           <h1 id="game-title">Singleplayer</h1>
@@ -56,7 +68,7 @@ export function Singleplayer() {
       )}
       {final && session ? (
         <section className="panel final-results" aria-labelledby="final-title">
-          <h2 id="final-title" ref={focusResult} tabIndex={-1}>
+          <h2 id="final-title" className="result-focus-target" ref={focusResult} tabIndex={-1}>
             Final Results
           </h2>
           <p className="final-score" aria-label="Final score">
@@ -177,7 +189,7 @@ export function Singleplayer() {
               ) : round?.completion && session ? (
                 <div role="status" className="round-result">
                   <p className="eyebrow">Round {round.number} of 5</p>
-                  <h2 tabIndex={-1} ref={focusResult}>
+                  <h2 className="result-focus-target" tabIndex={-1} ref={focusResult}>
                     {round.status === 'forfeited' ? 'Forfeited' : 'Correct'}
                   </h2>
                   <p className="result-answer">{round.completion.answer}</p>
@@ -211,7 +223,8 @@ export function Singleplayer() {
                   <form className="guess-form" onSubmit={(event) => void submit(event)}>
                     <label htmlFor="guess">Your Guess</label>
                     <input
-                      ref={input}
+                      key={round.id}
+                      ref={focusGuess}
                       id="guess"
                       name="guess"
                       value={text}
@@ -219,7 +232,6 @@ export function Singleplayer() {
                       placeholder="Enter a guess"
                       maxLength={120}
                       autoComplete="off"
-                      autoFocus
                       aria-describedby="guess-help guess-feedback"
                     />
                     <button className="button game-button" disabled={game.busy || !text.trim()}>
