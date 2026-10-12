@@ -78,7 +78,7 @@ export function Reveal({ round }: { round: GameRound | null }) {
       {!round && (
         <div className="stage-intro">
           <span aria-hidden="true">▦</span>
-          <p>Every tile hides a clue.</p>
+          <p>The image appears when the game starts.</p>
         </div>
       )}
       {failed && (

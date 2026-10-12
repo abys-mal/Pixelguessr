@@ -1,4 +1,4 @@
-# Phase 2 API
+# Phase 2.1 API
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
 
@@ -31,22 +31,30 @@ Throttle scopes: anonymous 120/hour, user 1200/hour, login/register 10/minute, i
 
 Party creation/join, matchmaking, ranked guesses, and leaderboard APIs remain unavailable. The prepared multiplayer WebSocket route rejects all handshakes.
 
-## Singleplayer
+## Five-round singleplayer
 
-All endpoints permit guests. Mutations require CSRF even when anonymous. Reads and mutations require the session owning the round (or the participant account); strangers receive 404. Responses use `Cache-Control: private, no-store` and `Vary: Cookie`.
+All endpoints permit guests and use the existing cookie session. Mutations require CSRF even for anonymous requests. Ownership is checked for every round read/image/action; strangers receive 404. Responses are private/no-store and vary by Cookie. No client user/guest identifier, score, reveal percentage or timestamp is trusted.
 
-| Method | Path                                                     | Result                                                                                                                                      |
-| ------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/games/singleplayer/current/`                       | `{round: null}` or latest session round snapshot                                                                                            |
-| POST   | `/api/games/singleplayer/rounds/`                        | `{request_id: UUID}` → 201 `{round: ...}`; same request/session resumes original round                                                      |
-| GET    | `/api/games/singleplayer/rounds/<uuid>/`                 | Owned round snapshot                                                                                                                        |
-| POST   | `/api/games/singleplayer/rounds/<uuid>/guesses/`         | `{request_id: UUID, guess: string}` → `{round, result}` with `correct`, `incorrect`, or `already_solved`                                    |
-| GET    | `/api/games/singleplayer/rounds/<uuid>/image/?v=<count>` | Authorized lossless masked WebP; `X-Revealed-Tiles` reports authoritative count. `v` is only a client frame version; cannot advance timing. |
+| Method | Path                                                     | Result                                                                                                                             |
+| ------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/games/singleplayer/current/`                       | `{round, session}` or both null; restores current round and score, never starts a game                                             |
+| POST   | `/api/games/singleplayer/rounds/`                        | `{request_id: UUID}` → 201 five-round game; same request resumes latest round                                                      |
+| GET    | `/api/games/singleplayer/rounds/<uuid>/`                 | Owned round plus its session summary                                                                                               |
+| POST   | `/api/games/singleplayer/rounds/<uuid>/guesses/`         | `{request_id: UUID, guess: string}` → state plus `correct`, `incorrect`, `already_completed`                                       |
+| POST   | `/api/games/singleplayer/rounds/<uuid>/forfeit/`         | Completes for zero points only after full 45-second reveal; result `forfeited` or `already_completed`                              |
+| POST   | `/api/games/singleplayer/rounds/<uuid>/next/`            | `{request_id: UUID}` → activate next round only after completion; retries return current state; Round 5 returns `session_complete` |
+| GET    | `/api/games/singleplayer/rounds/<uuid>/image/?v=<count>` | Authorized masked lossless WebP; `X-Revealed-Tiles` is server count; client v cannot advance reveal                                |
 
-Snapshots contain `id`, `status` (`active`, `solved`, `expired`), `server_now`, `started_at`, `reveal_finishes_at`, `expires_at`, `grid_size`, `total_tiles`, `revealed_count`, `revealed_tiles` (already revealed prefix only), `guess_count`, private round `image_url`, and `completion` (null until solved). Completion contains only `answer`, `solved_in_seconds`, `guesses`, `license`, `attribution`, and `category`. No synonyms, source/private storage URLs, image IDs, filenames, seed, or remaining reveal order are exposed.
+Round fields: opaque round `id`, `number`, `status` (`pending`, `active`, `solved`, `forfeited`, `expired`), `server_now`, nullable `started_at`/`reveal_finishes_at`/`expires_at`, `reveal_duration_seconds`, `grid_size`, `total_tiles`, `revealed_count`, `revealed_tiles` (revealed prefix only), `guess_count`, persisted `score`, server `available_points`, `can_forfeit`, authorized `image_url`, and `completion`. Pending rounds have no image URL, deadline or revealed tiles. Their image endpoint and game actions reject access.
 
-Guesses: 1–120 characters, Unicode NFKC + casefold, collapsed whitespace, punctuation/symbols treated as separators, apostrophes removed. Canonical answer and curated synonyms are normalized identically. Punctuation-only guesses are 400. A reused request ID with a different guess/round is 409 `request_conflict`. Repeating an accepted submission does not add another guess. Submitting after solve returns the completed snapshot without adding a guess.
+Completion stays null until solved/forfeited, then contains only `answer`, `outcome`, `score`, `solved_in_seconds` (null for forfeits), `guesses`, `license`, `attribution`, and `category`. Synonyms, private storage paths/URLs, image IDs, descriptive filenames, seeds and future reveal order are never published.
 
-Empty approved hosted library: 503 `library_empty`; inaccessible stored image: 503 `image_unavailable`; expired/abandoned guess: 410 `round_expired` with expired snapshot; expired image: 410. Full reveal after 30 seconds remains `active`, accepting guesses without penalty/cooldown. Session-bound guests cannot regain rounds after cookie loss. New starts abandon the previous active session round.
+Session fields: `id`, monotonically increasing `revision`, `status` (`active`, `complete`, `expired`), `server_now`, `expires_at`, `total_rounds` (5), `current_round_number`, `total_score`, `max_score` (5000), `solved_rounds`, and five `rounds` summaries. Summaries expose number/outcome; score is null until completion and answer is omitted until completion. The final summary remains immutable when another game starts.
 
-Scoped baseline abuse limits: CSRF 600/minute, starts 30/minute, state/image reads 600/minute, guesses 600/minute. Generic 120/hour anonymous limits do not apply to these game scopes. There is no per-round guess cap or gameplay cooldown. These cache-based safeguards are not a production concurrency or edge-abuse solution.
+Correct score is half-up rounding of `1000 * (1 - revealed_tiles / total_tiles) ** 2`, implemented with exact integer arithmetic. Points remain 0–1000; incorrect guesses never change stored scores. Full reveal does not end a round. Correct after full reveal is solved/0, forfeit is forfeited/0. Every completion and advance is serialized under the Match writer lock, which works with SQLite and PostgreSQL; repeated requests cannot award points twice.
+
+Guesses: 1–120 characters; NFKC/casefold, whitespace collapse, punctuation/symbols as separators, apostrophes removed. Canonical answers and synonyms normalize identically. Punctuation-only guesses return 400. Request UUID conflicts return 409 `request_conflict`. Completed actions return `already_completed` without adding guesses or scores. An old completed-action retry after progression returns the current round to avoid reverting the UI.
+
+Errors: 503 `library_empty` / `image_unavailable`; 409 `reveal_incomplete` before forfeit eligibility, `round_unfinished` for skipping, `round_not_current` / `round_not_started` for future rounds, `session_in_progress` for starting over while unfinished; 410 `round_expired` for expired/abandoned actions/images. Legacy one-round game mutations return 410 `legacy_session`; current-game recovery excludes legacy records. Account-owned active games can recover even when the browser lacks a round pointer; guests require their identity cookie.
+
+Scoped baseline abuse limits remain CSRF 600/minute, starts/advances 30/minute, state/image reads 600/minute, and guesses/forfeits 600/minute. No per-round guess cap, incorrect penalty or gameplay cooldown is introduced.

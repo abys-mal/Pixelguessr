@@ -23,6 +23,10 @@ class Match(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     elo_applied_at = models.DateTimeField(null=True, blank=True)
+    # Legacy one-round games remain historical; new singleplayer games use five.
+    singleplayer_round_limit = models.PositiveSmallIntegerField(default=1, editable=False)
+    singleplayer_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
+    singleplayer_revision = models.PositiveIntegerField(default=0, editable=False)
 
     class Meta:
         indexes = [models.Index(fields=["mode", "status", "created_at"])]
@@ -79,13 +83,18 @@ class Participant(models.Model):
 
 
 class Round(models.Model):
+    class Outcome(models.TextChoices):
+        SOLVED = "solved", "Solved"
+        FORFEITED = "forfeited", "Forfeited"
+        EXPIRED = "expired", "Expired"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="rounds")
     image = models.ForeignKey("library.ImageSubmission", on_delete=models.PROTECT)
     number = models.PositiveIntegerField()
     start_request_id = models.UUIDField(null=True, blank=True, unique=True)
     grid_size = models.PositiveSmallIntegerField(default=20)
-    reveal_duration_seconds = models.PositiveSmallIntegerField(default=30)
+    reveal_duration_seconds = models.PositiveSmallIntegerField(default=45)
     reveal_order = models.JSONField(default=list, editable=False)
     expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
     answer_snapshot = models.CharField(max_length=120, blank=True, editable=False)
@@ -94,6 +103,7 @@ class Round(models.Model):
     reveal_seed = models.UUIDField(default=uuid.uuid4, editable=False)
     reveal_started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=12, choices=Outcome, blank=True, default="")
     winner = models.ForeignKey(Participant, null=True, blank=True, on_delete=models.PROTECT)
     is_decisive = models.BooleanField(default=False)
 

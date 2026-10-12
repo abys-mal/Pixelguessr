@@ -10,6 +10,13 @@ from .settings import *  # noqa: F403, E402
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 if os.environ.get("TEST_DATABASE_URL"):
     DATABASES = {"default": env.db("TEST_DATABASE_URL")}  # noqa: F405
+# Optional isolated file database for real SQLite writer/concurrency tests.
+if (
+    os.environ.get("TEST_SQLITE_FILE")
+    and DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"
+):
+    DATABASES["default"]["TEST"] = {"NAME": os.environ["TEST_SQLITE_FILE"]}
+    DATABASES["default"]["OPTIONS"] = {"timeout": 20}
 if os.environ.get("TEST_REDIS_URL"):
     CACHES = {
         "default": {

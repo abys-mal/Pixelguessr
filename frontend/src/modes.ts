@@ -20,13 +20,13 @@ export const modes = [
     eyebrow: 'AT YOUR OWN PACE',
     className: 'mint',
     icon: '▧',
-    description: 'Follow the clues. Enjoy your own little aha moment.',
-    meta: 'Guests welcome · Unlimited guesses',
+    description: 'Five rounds. Guess the image as the tiles disappear.',
+    meta: 'Guests welcome · Score out of 5,000',
     rules: [
       'Guests and registered players are welcome.',
       'Unlimited guesses with no penalties or cooldown.',
-      'Tiles disappear randomly over 30 seconds.',
-      'After the reveal, the image stays visible until you guess correctly.',
+      'Five rounds with 45-second reveals. Up to 1,000 points per round.',
+      'After full reveal, keep guessing or forfeit for zero points.',
     ],
   },
   {

@@ -5,10 +5,15 @@ import type { GameRound } from '../games/singleplayer';
 
 const round: GameRound = {
   id: 'private-round',
+  number: 1,
+  score: 0,
+  available_points: 990,
+  can_forfeit: false,
+  reveal_duration_seconds: 45,
   status: 'active',
   server_now: '2026-10-11T12:00:00Z',
   started_at: '2026-10-11T12:00:00Z',
-  reveal_finishes_at: '2026-10-11T12:00:30Z',
+  reveal_finishes_at: '2026-10-11T12:00:45Z',
   expires_at: '2026-10-12T12:00:00Z',
   grid_size: 20,
   total_tiles: 400,

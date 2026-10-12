@@ -1,11 +1,12 @@
-# Pixelguessr · Phase 2
+# Pixelguessr · Phase 2.1
 
-A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 2 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
+A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 2.1 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
 
 ## Implemented
 
-- Guest and account singleplayer at `/singleplayer`: randomized 20×20 reveal over 30 seconds, unlimited guesses without penalty/cooldown, canonical and synonym matching, guessing after full reveal, success statistics, image credit, and Play Again.
-- Server-authoritative round state and reveal timing, durable session recovery, idempotent starts/submissions, 24-hour round expiry, private masked WebP frames, and explicit empty/loading/reconnect/error states. Raw originals and unrevealed answers/order never reach the client.
+- Guest and account singleplayer at `/singleplayer`: exactly five sequential rounds with randomized 20×20 reveals over **45 seconds**, unlimited guesses without penalty/cooldown, canonical/synonym matching, and persisted progress/score. Correct guesses earn up to 1,000 points per round; totals are out of 5,000.
+- Server-authoritative round state and reveal timing, durable session recovery, idempotent starts/submissions, 24-hour game expiry, private masked WebP frames, and explicit empty/loading/reconnect/error states. Raw originals and unrevealed answers/order never reach the client.
+- Forfeit becomes available only after full reveal and awards zero points. Round results show the answer, outcome, points, and total; Next Round waits for the player. Round 5 opens Final Results with all scores/outcomes, solved count, Play Again, and Return Home.
 - Four original CC0 illustrations, imported pending and explicitly reviewed only with `seed_dev_images --approve`. See [development image attribution](docs/development-images.md).
 
 - Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. The Singleplayer card opens the real game; Ranked and Parties remain explicitly unavailable.
@@ -118,8 +119,30 @@ Compose runs migrations automatically before starting the ASGI development serve
 
 ## Singleplayer configuration and limits
 
-New rounds snapshot `SINGLEPLAYER_GRID_SIZE` (default 20, allowed 5–40), `SINGLEPLAYER_REVEAL_SECONDS` (default 30, allowed 1–120), and `SINGLEPLAYER_ROUND_TTL_SECONDS` (default 86400, longer than the reveal). Existing rounds retain their settings. Guest identity and browser session last seven days; rounds expire after 24 hours. Clearing cookies or signing out removes the browser's recovery pointer; private rounds cannot be recovered from a UUID alone.
+New rounds snapshot `SINGLEPLAYER_GRID_SIZE` (default 20, allowed 5–40), a fixed 45-second reveal duration, and `SINGLEPLAYER_ROUND_TTL_SECONDS` (default 86400, longer than the reveal). Existing rounds retain their settings. Guest identity and browser session last seven days; active five-round games expire after 24 hours. Clearing cookies or signing out removes the browser's recovery pointer; private rounds cannot be recovered from a UUID alone.
 
 The client requests state about once per second and crossfades only server-confirmed tiles. Django composes private lossless WebP frames on demand at 960×720 with letterboxing. Reusable services keep timing/answers/ownership separate from delivery, but concurrent multiplayer needs shared state transport, load testing, edge controls, and a more efficient compositor before launch. Baseline abuse limits (600 guesses/minute) impose no gameplay cooldown or per-round guess limit.
 
-Only approved **hosted uploads** are playable. Approved external references remain metadata until staff import a licensed file through the normal private storage pipeline; gameplay never fetches remote URLs. Completed rounds disclose the canonical answer and credit; synonyms and private storage remain hidden. Original development artwork is a small test library, not a finished content collection.
+Only approved **hosted uploads** are playable. Approved external references remain metadata until staff import a licensed file through the normal private storage pipeline; gameplay never fetches remote URLs. Solved and forfeited rounds disclose the canonical answer and credit; synonyms and private storage remain hidden. Original development artwork is a small test library, not a finished content collection.
+
+## Five-round scoring and integrity
+
+Points for a correct guess are `round_half_up(1000 * (1 - r) ** 2)`, where `r` is **server-revealed tile count / total tiles** at acceptance. Integer arithmetic implements half-up rounding consistently: 0%, 10%, 25%, 50%, 75%, and 100% award 1000, 810, 563, 250, 63, and 0 points. Wrong guesses never alter stored scores. A correct guess after 45 seconds is recorded as solved with zero points; forfeit is recorded separately with zero points. The interface shows only cumulative earned points and completed round scores; there is no live potential-score counter.
+
+A Match stores the five-round limit, game expiry, and revision; Round stores ordering/outcome/timing/private image snapshots; RoundPlayerState stores points; Participant stores their sum. Five rounds are created up front but only one starts at a time. Future images cannot be delivered or guessed. Next Round requires a completed current round. Duplicate/concurrent requests acquire a match writer lock before mutable reads and cannot score or advance twice. Starting a different game while one is unfinished returns 409; retries of the same start safely resume progress.
+
+Image selection uses distinct approved hosted images until the library is exhausted, then chooses least-used images while avoiding immediate repeats whenever possible. Pending rounds recheck staff approval and select an eligible image when activated. A missing/empty library at activation leaves the completed result available for retry; no moderation status is changed.
+
+Additive migrations `games.0003` and `games.0004` retain prior one-round games as read-only history. They preserve original scores, timestamps, reveal durations, image records/files and owners; completed legacy outcomes are backfilled without inventing scores. The new game page starts a five-round game instead of extending or replaying legacy results.
+
+### Real SQLite concurrency checks
+
+The normal suite uses isolated in-memory SQLite. Concurrency cases intentionally skip there because shared in-memory SQLite has different lock behavior. From `backend/`, run them against a **disposable** file database (never `db.sqlite3`):
+
+```powershell
+$env:TEST_SQLITE_FILE = Join-Path (Get-Location) '.pytest_cache/phase21-concurrency.sqlite3'
+..\.venv\Scripts\python.exe -m pytest -q -k concurrent
+Remove-Item Env:TEST_SQLITE_FILE
+```
+
+The optional `TEST_SQLITE_FILE` affects only test settings. PostgreSQL CI settings are preserved. Migration compatibility is exercised on an isolated test database, not the development database.

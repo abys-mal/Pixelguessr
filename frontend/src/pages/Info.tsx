@@ -34,8 +34,8 @@ export function About() {
       <section className="panel prose">
         <h2>From pixels to perspective</h2>
         <p>
-          Each image begins completely covered by tiles. Random tiles disappear over 30 seconds,
-          eventually revealing the whole picture. Guess the subject as the clues emerge.
+          Singleplayer has five rounds. Each image is revealed over 45 seconds. Correct guesses earn
+          up to 1,000 points per round. After full reveal, keep guessing or forfeit for zero points.
         </p>
         <h2>Play your way</h2>
         <p>

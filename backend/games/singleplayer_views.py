@@ -11,11 +11,13 @@ from .reveal import render_reveal
 from .serializers import GuessSerializer, StartRoundSerializer
 from .services import (
     GameError,
-    current_round,
+    current_game,
     expire_round,
+    forfeit_round,
+    next_round,
     owned_round,
-    snapshot,
     start_round,
+    state_payload,
     submit_guess,
 )
 
@@ -34,7 +36,7 @@ class SingleplayerView(APIView):
 
 class CurrentRoundView(SingleplayerView):
     def get(self, request):
-        return Response({"round": current_round(request)})
+        return Response(current_game(request))
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -45,12 +47,12 @@ class StartRoundView(SingleplayerView):
         serializer = StartRoundSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         game_round = start_round(request, serializer.validated_data["request_id"])
-        return Response({"round": snapshot(game_round)}, status=201)
+        return Response(state_payload(request, game_round), status=201)
 
 
 class RoundView(SingleplayerView):
     def get(self, request, pk):
-        return Response({"round": snapshot(owned_round(request, pk))})
+        return Response(state_payload(request, owned_round(request, pk)))
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -72,8 +74,31 @@ class ImageView(SingleplayerView):
         expire_round(game_round, now)
         if game_round.match.status == "abandoned":
             raise GameError("This round has expired. Start a new picture.", "round_expired", 410)
+        if not game_round.reveal_started_at:
+            raise GameError("This round has not started.", "round_not_started")
         content, count = render_reveal(game_round, now)
         response = HttpResponse(content, content_type="image/webp")
         response["X-Revealed-Tiles"] = str(count)
         response["Content-Disposition"] = 'inline; filename="reveal.webp"'
         return response
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class ForfeitView(SingleplayerView):
+    throttle_scope = "game_guess"
+
+    def post(self, request, pk):
+        # Completion itself is the idempotency guard; no repeated forfeits can score.
+        result = forfeit_round(request, pk)
+        return Response(result, status=410 if result["result"] == "expired" else 200)
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class NextRoundView(SingleplayerView):
+    throttle_scope = "game_start"
+
+    def post(self, request, pk):
+        serializer = StartRoundSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = next_round(request, pk, serializer.validated_data["request_id"])
+        return Response(result, status=410 if result["result"] == "expired" else 200)

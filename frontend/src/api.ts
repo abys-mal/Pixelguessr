@@ -49,7 +49,7 @@ export class ApiError extends Error {
 function errorMessage(body: unknown, status: number): string {
   if (typeof body === 'object' && body !== null) {
     return Object.entries(body)
-      .filter(([key]) => key !== 'code' && key !== 'round' && key !== 'result')
+      .filter(([key]) => key !== 'code' && key !== 'round' && key !== 'session' && key !== 'result')
       .map(([key, value]) => {
         const content = Array.isArray(value) ? value.join(' ') : String(value);
         return ['detail', 'non_field_errors'].includes(key)

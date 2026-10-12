@@ -1,33 +1,36 @@
-# Phase 2 verification · 2026-10-11
+# Phase 2.1 verification · 2026-10-11
 
-Implemented and verified directly in `C:/Users/actian/python code/Pixelguessr`, preserving the existing Django/library/accounts/games structure and React/Vite frontend. Python 3.13.2, Node 24.21.0. No Docker, clone, commit, push, or pull request was used for Phase 2.
+Implemented directly in `C:/Users/actian/python code/Pixelguessr` using the existing Django/SQLite and React/Vite project. No clone, commit, push, pull request, Docker, Redis/PostgreSQL service or cloud dependency was used.
 
-| Check                              | Result                                                                                                                            |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Django system checks               | Passed, no issues                                                                                                                 |
-| Local SQLite migrations            | Additive `games.0002` applied successfully                                                                                        |
-| Migration drift                    | No changes detected                                                                                                               |
-| Backend pytest                     | 48 passed, isolated SQLite/in-memory services                                                                                     |
-| Ruff lint / formatting             | Passed                                                                                                                            |
-| Frontend Vitest                    | 21 passed across 3 files                                                                                                          |
-| ESLint / Prettier                  | Passed                                                                                                                            |
-| TypeScript / Vite production build | Passed                                                                                                                            |
-| HTTP readiness and frontend        | Both returned 200                                                                                                                 |
-| Browser empty library              | Clear empty-library message before explicit fixture review                                                                        |
-| Browser guest gameplay             | Real start, incorrect Enter submission, zero-penalty retry, countdown, randomized reveal                                          |
-| Browser full reveal                | At 0s / 400 tiles the round remains active and accepts guesses                                                                    |
-| Browser synonym                    | `BalloOn!!` solves `hot air balloon`; answer/credit disclosed only on success                                                     |
-| Browser refresh                    | Existing round and completed success recover without a new round                                                                  |
-| Browser server interruption        | Last image retained with reconnect message; restarting Django automatically resumes the same guest round and authoritative reveal |
-| Browser Play Again / homepage      | New round starts; homepage Singleplayer card links to real game                                                                   |
-| Browser responsive layout          | Desktop, 390px and 320px; no horizontal overflow                                                                                  |
+| Check                              | Result                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Standard backend pytest            | 81 passed; 6 concurrency cases intentionally skipped for shared in-memory SQLite                      |
+| File-backed SQLite concurrency     | All 6 skipped cases passed separately against a disposable test database                              |
+| Frontend Vitest                    | 25 passed across 3 files                                                                              |
+| Ruff lint / format                 | Passed                                                                                                |
+| ESLint / Prettier                  | Passed                                                                                                |
+| TypeScript / Vite production build | Passed                                                                                                |
+| Django checks                      | Passed, no issues                                                                                     |
+| Migration drift                    | No changes detected                                                                                   |
+| Local migrations                   | `games.0003` and `games.0004` applied                                                                 |
+| Data preservation                  | Original row/column fingerprints unchanged across 20 tables immediately after migration               |
+| Approved hosted library            | Existing 4 approved images preserved; no seeding or moderation changes                                |
+| Browser HTTP readiness / frontend  | Both 200                                                                                              |
+| Browser full game                  | Exactly five sequential rounds; explicit Next Round; final total, each outcome/score and solved count |
+| Browser forfeits                   | Round 1 and Round 5 forfeited after full reveal for 0; Round 5 opened Final Results                   |
+| Browser normalized synonym         | `BIKE!!` accepted as bicycle, earning 245 points at server acceptance                                 |
+| Browser post-reveal guesses        | Cherries/lighthouse recorded solved with 0 points, distinct from forfeits                             |
+| Browser refresh/reconnect          | Round results, current round and 245-point total survived refresh and Django interruption/restart     |
+| Browser Play Again                 | Fresh game, Round 1, 0 total; previous completed game retained                                        |
+| Responsive browser                 | Desktop, 390px, 320px; gameplay and final results fit without horizontal overflow                     |
+| User refinement                    | Live potential-score counter removed; only cumulative and earned round scores displayed               |
 
-Backend coverage includes guest CSRF/ownership, cross-session denial, account participation, pending/external/empty library rejection, validation, canonical/synonym normalization, no cooldown/penalty, idempotent starts/guesses, completion, expiry, abandoned rounds, configuration/answer snapshots, missing storage, and approval changes during creation. Decoded-image tests examine tile interiors **and boundaries** at 0, 15, 29.999, 30, and 35 seconds; unrevealed pixels stay opaque even with forged full-reveal query parameters. Cache loss preserves reveal order/state. Four original CC0 development fixtures are tested as pending by default and explicitly reviewed; unrelated pending user submissions stay pending. The fixture-command test skips on PostgreSQL because that command deliberately requires development SQLite.
+Backend tests verify five planned rounds/one active round, 45-second timing, canonical/synonym matching, incorrect guesses without penalties/cooldowns, exact half-up scores (1000/810/563/250/63/0), post-reveal solved/0, guarded forfeits, duplicate scoring prevention, protected pending images, skip/start-over rejection, private answers and source paths, guests/accounts, refresh/cache loss, expiry preserving earned points, stale retries preserving active-game recovery, library sizes 1/2/4/5/6, empty/pending/external-only libraries, missing files, approval changes, and ignored client score/timing claims. Pixel tests retain mask checks on tile edges and interiors at 0, 22.5, 44.999, 45 and 50 seconds.
 
-Frontend coverage includes real page controls and keyboard form submission, saved/fully revealed/completed rounds, empty/expired/error states, connection recovery, stale poll rejection, legacy route redirect, masked-frame fetching, only-confirmed tile transitions, picture retries, and blob-resource cleanup, alongside the existing auth/routing regressions.
+Migration tests create legacy one-round data on the old schema in an isolated database and upgrade again, checking stored scores, answers, synonyms, owners, images, timestamps, 30-second historical durations and completed outcomes. The development database was backed up before migration; account/library/moderation and all original game columns were verified unchanged before browser test records were added.
 
-Local SQLite now includes four explicitly reviewed original illustrations; development database/private-media remain ignored local data. No default administrator was created. The disabled `pixelguessr-dev-curator` has an unusable password and is solely an audit actor, not an admin login. Use `manage.py createsuperuser` for your own administrator.
+Concurrency tests use real SQLite file writer locks: duplicate correct guesses, correct/forfeit races, repeated Next Round, repeated starts, and simultaneous new starts with identical or different request UUIDs. They use serialized test rollback to retain migration-seeded categories. `TEST_SQLITE_FILE` affects only test settings; default tests remain isolated in-memory SQLite. No automated test uses development data.
 
-Phase 2 did not exercise PostgreSQL, Redis, Docker, S3, production deployment, or multiplayer. Those configurations are preserved. Masked frame generation is CPU-bound and currently polled about once per second; shared transport/compositor performance and abuse controls need separate multiplayer/production validation. Guest recovery requires the original session cookies; round expiry defaults to 24 hours. Old rounds are retained; automatic retention cleanup is a future task.
+Frontend tests cover cumulative scores, round counter/progress, keyboard guesses, round results and focus, five-round progression, final table and Play Again, forfeit visibility/outcomes, zero-point solves, refresh/reconnect, empty/expired games, delayed poll rejection and timer-only forfeit denial. There is a regression assertion that Current Score is absent. Reveal-component tests retain authorized masked-frame fetching, confirmed tile transitions, retries, and blob cleanup.
 
-Temporary development servers used for verification are stopped after review. Startup and fixture-review commands are documented in README.
+No known gameplay failures remain. The small original fixture library necessarily repeats one image in a five-round game; immediate repeats are avoided. Masked frame delivery remains about once per second and needs production/multiplayer load optimization. PostgreSQL/Redis/S3 integration and deployment were not exercised. Legacy one-round games remain read-only history; record retention cleanup remains future work. Temporary owned verification servers are stopped after completion. See README for local startup/testing commands.

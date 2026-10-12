@@ -1,6 +1,6 @@
 # Architecture
 
-One Django application and one React application. Local Phase 2 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. No microservices or background worker are needed.
+One Django application and one React application. Local Phase 2.1 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. No microservices or background worker are needed.
 
 ```text
 Browser → Vite development proxy / production edge → Django ASGI
@@ -42,7 +42,7 @@ Moderation checks start times, expiry, and audited revocation. Warnings remain a
 - Publish only opaque image-delivery tokens, revealed tile coordinates, public participant summaries, authoritative deadlines, and game state. Do not send canonical answers, synonyms, private storage references, or revealing attribution/provenance until an intentional post-round disclosure.
 - Prevent downloading the full image at the start of a competitive round. Implement authorized tile delivery or rendered progressive images; a client-side cover over a full image is insufficient.
 - Validate account restrictions, match membership, round state, and guess limits inside atomic services. Use row locks/idempotency to decide concurrent guesses and apply Elo once after match completion. Redis is transient transport; PostgreSQL is the durable source of truth.
-- Singleplayer: unlimited guesses, no cooldown/penalty, image stays after 30 seconds until solved.
+- Singleplayer: five rounds, 45-second reveal, up to 1,000 points per round, no incorrect penalty/cooldown, forfeit only after full reveal.
 - Parties: unlimited guesses, incorrect penalty 50 and cooldown 2 seconds, up to 1,000 points based on reveal progress. Signed round score, cumulative floor zero, solved players spectate, everyone solved ends early.
 - Ranked: accounts only, matchmaking only, one guess each, wrong guess immediately loses, first correct wins, no winner replays, first four decisive wins ends the match. No tier thresholds have been selected.
 - Authentication of Channels sessions and origin checking are wired; implement object-level authorization, reconnect state, message validation, and distributed timing before accepting any game socket.
@@ -59,4 +59,16 @@ Local regression tests use SQLite/in-memory services; CI is configured for Postg
 
 React `useSingleplayer` reconciles server snapshots, handles retry request IDs, polls and reconnects on focus/online, and rejects delayed polls that would undo success/new starts. Its countdown uses a server-clock anchor plus a monotonic cosmetic clock. `Reveal` fetches only masked frames, decodes them before swapping, then fades a decorative grid. Removing the CSS overlay cannot expose hidden pixels. Slow/offline delivery preserves the last confirmed frame until reconnection.
 
-Round expiry is 24 hours (configurable), rather than the 30-second reveal deadline. Full reveal does not end a round. Solved rounds persist with canonical answer, timing/counts and credit until another round is started; expired rounds reveal no answer. Starting another picture abandons the old active round. A future retention/cleanup command should remove old game/session records according to a documented retention policy.
+The five-round Match expires after 24 hours by default; this is separate from each 45-second reveal. Full reveal never automatically ends a round. Solved/forfeited rounds retain outcomes, canonical answer and points. Pending rounds stay private. Legacy one-round matches remain read-only history; migrations retain original scores/times/images and only backfill outcomes. Accounts, moderation and future multiplayer models remain intact.
+
+## Five-round persistence and transitions
+
+`Match.singleplayer_round_limit`, `singleplayer_expires_at`, and `singleplayer_revision` distinguish new five-round sessions from legacy one-round data. All five Round records exist at creation. Only round 1 has a start timestamp; Next Round activates one pending successor after the previous outcome is solved/forfeited. Approval is rechecked at activation. Distinct images are preferred; a smaller pool reuses least-used images while avoiding adjacent repetitions.
+
+Scores use existing `RoundPlayerState.score` and `Participant.total_score`. A correct guess freezes the score from actual server reveal count, and the total is recomputed as the sum. Exact integer half-up arithmetic gives 563 at 25% and 63 at 75%; no floating-point rounding discrepancy. Forfeit requires 100% server progress and records a distinct zero-point outcome. Only the fifth completion completes the Match.
+
+Ownership reads occur before opening mutation transactions. The first operation inside a guess/forfeit/advance transaction is a Match UPDATE that acquires the writer lock; then mutable state is re-read. New starts lock the owner before checking for an unfinished game. Request UUIDs and completed outcomes make retries harmless. Persistent revisions let React reject older state, including responses generated at the same timestamp. Expiry and later starts never recalculate prior earned scores.
+
+Current reads restore the latest started round rather than trusting an old browser pointer. Account-owned active sessions can recover on another authenticated browser; guest recovery requires session cookies. React provides explicit round results and Next Round, followed by a dedicated final table and Play Again. Timer values are cosmetic; neither score nor forfeit eligibility is determined by the browser clock.
+
+Tests use in-memory SQLite by default, plus an optional isolated file database for actual simultaneous-request tests. Historical migration compatibility is tested by applying the old schema and upgrading again inside a disposable database. No production/development data is used in automated tests.
