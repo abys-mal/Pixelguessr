@@ -9,6 +9,7 @@ from .party_serializers import (
     JoinPartySerializer,
     PartyActionSerializer,
     PartyGuessSerializer,
+    PartyKickSerializer,
     PartySettingsSerializer,
 )
 from .reveal import render_reveal
@@ -46,7 +47,7 @@ class PartyJoinView(SingleplayerView):
     def post(self, request, code):
         serializer = JoinPartySerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        parties.join_party(request, code, serializer.validated_data["display_name"])
+        parties.join_party(request, code)
         return Response(parties.party_state(request, code))
 
 
@@ -87,3 +88,17 @@ class PartyImageView(SingleplayerView):
         response["X-Revealed-Tiles"] = str(count)
         response["Content-Disposition"] = 'inline; filename="reveal.webp"'
         return response
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class PartyKickView(SingleplayerView):
+    throttle_scope = "game_start"
+
+    def post(self, request, code):
+        serializer = PartyKickSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        parties.kick_party(
+            request, code, data["target_id"], data["prevent_rejoin"], data["request_id"]
+        )
+        return Response(parties.party_state(request, code))

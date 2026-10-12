@@ -1,4 +1,4 @@
-# Phase 2.1 API
+# Pixelguessr API — through Phase 3.1
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
 
@@ -61,24 +61,27 @@ Scoped baseline abuse limits remain CSRF 600/minute, starts/advances 30/minute, 
 
 ## Multiplayer parties
 
-All mutations require cookie-session CSRF, including guests. Member reads/actions/images are private/no-store and vary by Cookie. Codes are case-insensitive. Accounts use their server display name; guests supply `display_name` (2–24 letters/numbers/spaces/simple punctuation). Unknown/foreign membership is 404; closed/expired parties are 410; host violations are 403; gameplay conflicts are 409; active wrong-guess cooldown returns 429. No client identity, score, start time, or reveal count is trusted.
+All mutations require cookie-session CSRF, including guests. Member reads/actions/images are private/no-store and vary by Cookie. Codes are case-insensitive. Accounts use their server display name; guests receive automatic unique party names from the server. Legacy `display_name` inputs are ignored; new clients omit them. Unknown/foreign membership is 404; removed/banned/expired memberships are 403. Closed/expired joins are 410; existing members can read a non-expired terminal party for its explanation; host violations are 403; gameplay conflicts are 409; active wrong-guess cooldown returns 429. No client identity, score, start time, or reveal count is trusted.
 
 | Method | Path | Body / result |
 | --- | --- | --- |
-| POST | `/api/parties/` | `{request_id: UUID, display_name?: string, reveal_seconds?: 30, round_limit?: 10}` → 201 personalized state |
+| POST | `/api/parties/` | `{request_id: UUID, reveal_seconds?: 30, round_limit?: 10}` → 201 personalized state |
 | GET | `/api/parties/<code>/` | Member state; refreshes presence as HTTP fallback |
-| POST | `/api/parties/<code>/join/` | `{display_name?: string}` → member state; duplicate identity resumes |
+| POST | `/api/parties/<code>/join/` | `{}` → member state; duplicate identity resumes with its existing name |
 | PATCH | `/api/parties/<code>/` | Host lobby settings: `reveal_seconds` (15/30/45/60), `round_limit` (5/10/15/20); extra fields rejected |
 | POST | `/api/parties/<code>/start/` | Host + `{request_id: UUID}`; minimum two members |
-| POST | `/api/parties/<code>/leave/` | Leaves, transfers host if needed; 204 |
+| POST | `/api/parties/<code>/leave/` | Explicit departure; host closes/aborts, last opponent aborts; 204 |
+| POST | `/api/parties/<code>/kick/` | Host + `{target_id: UUID, prevent_rejoin?: false, request_id: UUID}`; no self/foreign/left targets; idempotent removal/optional party-specific identity ban → state |
 | POST | `/api/parties/<code>/lobby/` | `{request_id: UUID}`; any member after final results may return everyone to lobby |
 | POST | `/api/parties/<code>/guesses/` | `{round_id: UUID, guess: string, request_id: UUID}` → `{state, result}` |
 | GET | `/api/parties/<code>/rounds/<uuid>/image/` | Authorized current masked WebP; client query parameters cannot advance reveal |
 
-State contains `code`, `status` (lobby/playing/complete), `revision`, `server_now`, `expires_at`, `host_id`, `me_id`, two `settings`, active `members`, `match_id`, current `round`, `leaderboard`, `winners`, `message`, and fixed `rules`. It never exposes future round IDs/images, synonyms, original URLs, private filenames, or raw guesses.
+State contains `code`, `status` (lobby/playing/complete/aborted/closed), `revision`, `server_now`, `expires_at`, `host_id`, `me_id`, two `settings`, active `members`, `match_id`, current `round`, `leaderboard`, `winners`, `message`, `end_reason`, `end_message`, and fixed `rules`. Terminal causes are `host_left`, `host_disconnected`, or `not_enough_players`. Aborted/closed states have no current round, leaderboard, winners or automatic advancement. It never exposes future round IDs/images, synonyms, original URLs, private filenames, or raw guesses.
 
 Current round includes server start/deadline/next-transition timestamps, reveal size/count/prefix, private image endpoint, and private `me` solve/score/guess/cooldown state. `completion` remains null for everyone, including solved players, until round end; then it contains canonical answer and curated attribution/license/category. Leaderboard rows contain member ID/name, stored round/total score, solved/connected/left flags, round rank, and solved-round count. See [party rules and tie-breaking](parties.md).
 
-`/ws/parties/<code>/` uses the same cookie identity and validates trusted origins before accepting. The server sends `{type: "state", state: ...}` initially and as state changes, with one-second reconciliation. Send `{type: "heartbeat"}` every five seconds. Guesses use `{type: "guess", round_id, guess, request_id}` and receive `{type: "guess_result", request_id, result, state}`; errors contain `type: "error"`, request ID where present, detail, code, and status. Lost acknowledgments may be retried over HTTP with the same UUID without repeating score effects. Unauthorized/session-revoked connections close with 4403; oversized frames close with 1009. Essential state survives connection/server/cache loss.
+`/ws/parties/<code>/` uses the same cookie identity and validates trusted origins before accepting. The server sends `{type: "state", state: ...}` initially and as state changes, with one-second reconciliation. Send `{type: "heartbeat"}` every five seconds. Guesses use `{type: "guess", round_id, guess, request_id}` and receive `{type: "guess_result", request_id, result, state}`; errors contain `type: "error"`, request ID where present, detail, code, and status. Lost acknowledgments may be retried over HTTP with the same UUID without repeating score effects. An established connection losing membership receives `{type: "access_denied", detail, code, status}` before closing with 4403. Clients stop retrying, including pending-guess HTTP fallback; only an explicit unbanned lobby join can resume removed membership. Rejected handshakes also close with 4403. Unauthorized/session-revoked connections close with 4403; oversized frames close with 1009. Essential state survives connection/server/cache loss.
 
-Party errors include `party_full`, `name_taken`, `match_started`, `settings_locked`, `not_enough_players`, `host_only`, `round_not_current`, `round_not_started`, `round_ended`, `already_solved`, `guess_cooldown`, `request_conflict`, and `party_closed`. Empty/unavailable curated libraries use the existing 503 game errors. Rejected deadline guesses still persist the deadline transition. No fuzzy matching or category selection is implemented.
+Party errors include `party_full`, `party_removed`, `party_banned`, `membership_expired`, `match_aborted`, `cannot_kick_host`, `party_ended`, `match_started`, `settings_locked`, `not_enough_players`, `host_only`, `round_not_current`, `round_not_started`, `round_ended`, `already_solved`, `guess_cooldown`, `request_conflict`, and `party_closed`. Empty/unavailable curated libraries use the existing 503 game errors. Rejected deadline guesses still persist the deadline transition. No fuzzy matching or category selection is implemented.
+
+Presence has a 15-second lease from the latest heartbeat. Reconciliation precedes renewal; stale reconnects cannot undo aborts. Solved spectators retain membership. Host departure closes a lobby or aborts a match, with no succession. Fewer than two remaining participants aborts active matches, including intermission. Kick bans persist by account/guest identity and are scoped to one party; new guest identities can bypass guest bans. Active clients render only a compact solved-player count even though safe score summaries remain in the authenticated state. Full results appear between rounds and after completion.

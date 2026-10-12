@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/context';
 import { Reveal } from '../games/Reveal';
@@ -60,29 +60,18 @@ function SettingsFields({
     </div>
   );
 }
-function NameField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+function PlayingIdentity() {
   const { user } = useAuth();
-  return user ? (
-    <p className="muted">Playing as {user.display_name || user.username}</p>
-  ) : (
-    <label>
-      Display name
-      <input
-        name="display_name"
-        autoComplete="nickname"
-        required
-        minLength={2}
-        maxLength={24}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Your name"
-      />
-    </label>
+  return (
+    <p className="muted">
+      {user
+        ? `Playing as ${user.display_name || user.username}`
+        : 'Your guest name is assigned automatically.'}
+    </p>
   );
 }
 export function PartyEntry({ create = false }: { create?: boolean }) {
   const navigate = useNavigate();
-  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [seconds, setSeconds] = useState(30);
   const [rounds, setRounds] = useState(10);
@@ -101,10 +90,9 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
         ? await partyApi.create({
             reveal_seconds: seconds,
             round_limit: rounds,
-            display_name: name,
             request_id: requestId.current,
           })
-        : await partyApi.join(code.trim().toUpperCase(), name);
+        : await partyApi.join(code.trim().toUpperCase());
       navigate(`/party/${state.code}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open this party.');
@@ -120,7 +108,7 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
         <p className="eyebrow">Parties</p>
         <h1>{create ? 'Create Party' : 'Join Party'}</h1>
         <form onSubmit={(event) => void submit(event)}>
-          <NameField value={name} onChange={setName} />
+          <PlayingIdentity />
           {create ? (
             <SettingsFields
               seconds={seconds}
@@ -219,24 +207,148 @@ function Leaderboard({
     </div>
   );
 }
+function RemovePlayerDialog({
+  name,
+  busy,
+  remove,
+  dismiss,
+  restoreFocus,
+  error,
+}: {
+  name: string;
+  busy: boolean;
+  remove: (ban: boolean) => Promise<boolean>;
+  dismiss: () => void;
+  restoreFocus: () => void;
+  error: string;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const [ban, setBan] = useState(false);
+  useEffect(() => {
+    const node = dialog.current;
+    if (node?.showModal) node.showModal();
+    else node?.setAttribute('open', '');
+    cancel.current?.focus();
+    return () => {
+      node?.close?.();
+      restoreFocus();
+    };
+  }, [restoreFocus]);
+  return (
+    <dialog
+      ref={dialog}
+      className="party-remove-dialog"
+      aria-labelledby="remove-player-title"
+      aria-describedby="remove-player-message"
+      onCancel={(event) => {
+        event.preventDefault();
+        dismiss();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          dismiss();
+        }
+        if (event.key === 'Tab') {
+          const controls = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>(
+              'input:not(:disabled), button:not(:disabled)',
+            ),
+          );
+          const first = controls[0],
+            last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }
+      }}
+    >
+      <h2 id="remove-player-title">Remove player?</h2>
+      <p id="remove-player-message">Remove {name} from this party?</p>
+      <label className="party-ban-choice">
+        <input
+          type="checkbox"
+          checked={ban}
+          onChange={(event) => setBan(event.target.checked)}
+          disabled={busy}
+        />
+        Prevent this player from re-joining
+      </label>
+      {error && (
+        <p role="alert" className="message error">
+          {error}
+        </p>
+      )}
+      <div className="final-actions">
+        <button className="button secondary" ref={cancel} onClick={dismiss}>
+          Cancel
+        </button>
+        <button
+          className="button danger"
+          disabled={busy}
+          onClick={async () => {
+            if (await remove(ban)) dismiss();
+          }}
+        >
+          {busy ? 'Removing…' : 'Remove player'}
+        </button>
+      </div>
+    </dialog>
+  );
+}
 function Lobby({
   state,
   busy,
   settings,
   start,
+  kick,
+  error,
 }: {
   state: PartyState;
   busy: boolean;
   settings: (value: PartyState['settings']) => Promise<boolean>;
   start: () => void;
+  kick: (target: string, ban: boolean) => Promise<boolean>;
+  error: string;
 }) {
   const [seconds, setSeconds] = useState(state.settings.reveal_seconds);
   const [rounds, setRounds] = useState(state.settings.round_limit);
   const host = state.me_id === state.host_id;
+  const [targetId, setTargetId] = useState<string | null>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
+  const target = host
+    ? state.members.find((member) => member.id === targetId && member.id !== state.host_id)
+    : undefined;
+  const focusLobby = useCallback((node: HTMLHeadingElement | null) => {
+    heading.current = node;
+    node?.focus();
+  }, []);
+  const restoreFocus = useCallback(() => {
+    if (trigger.current?.isConnected) trigger.current.focus();
+    else if (heading.current?.isConnected) heading.current.focus();
+    else document.querySelector<HTMLElement>('.party-page .result-focus-target')?.focus();
+  }, []);
   return (
     <div className="party-lobby">
+      {target && (
+        <RemovePlayerDialog
+          key={target.id}
+          name={target.name}
+          busy={busy}
+          remove={(ban) => kick(target.id, ban)}
+          dismiss={() => setTargetId(null)}
+          restoreFocus={restoreFocus}
+          error={error}
+        />
+      )}
       <section className="panel">
-        <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
+        <h2 className="result-focus-target" ref={focusLobby} tabIndex={-1}>
           Lobby <span className="muted">{state.members.length} / 12</span>
         </h2>
         <ul className="party-members">
@@ -252,6 +364,20 @@ function Lobby({
               </strong>
               {member.id === state.host_id && <span className="party-host">Host</span>}
               <small>{member.connected ? 'Connected' : 'Reconnecting'}</small>
+              {host && member.id !== state.host_id && (
+                <button
+                  type="button"
+                  className="party-kick"
+                  aria-label={`Remove ${member.name}`}
+                  disabled={busy}
+                  onClick={(event) => {
+                    trigger.current = event.currentTarget;
+                    setTargetId(member.id);
+                  }}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -324,7 +450,6 @@ export function PartyGame() {
   const code = rawCode.toUpperCase();
   const game = useParty(code);
   const navigate = useNavigate();
-  const [name, setName] = useState('');
   const [guessDraft, setGuessDraft] = useState({ roundId: '', text: '' });
   const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement | null>(null);
@@ -389,10 +514,10 @@ export function PartyGame() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void game.join(name);
+              void game.join();
             }}
           >
-            <NameField value={name} onChange={setName} />
+            <PlayingIdentity />
             <button className="button" disabled={game.busy}>
               Join Party
             </button>
@@ -410,12 +535,34 @@ export function PartyGame() {
       <section className="party-page">
         <PartyLinks />
         <div className="panel">
-          <h1>Party unavailable</h1>
+          <h1 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
+            {['party_removed', 'party_banned'].includes(game.accessCode)
+              ? 'Removed from party'
+              : 'Party unavailable'}
+          </h1>
           <p role="alert">{game.error || 'Create a party or check your invite code.'}</p>
-          <Link className="button" to="/party/new">
-            Create Party
+          <Link className="button" to="/">
+            Return Home
+          </Link>
+          <Link className="button secondary" to="/party/join">
+            Join a Party
           </Link>
         </div>
+      </section>
+    );
+  if (state.status === 'aborted' || state.status === 'closed')
+    return (
+      <section className="party-page">
+        <PartyLinks />
+        <section className="panel final-results">
+          <h1 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
+            {state.status === 'aborted' ? 'Match ended' : 'Party closed'}
+          </h1>
+          <p role="status">{state.end_message || 'This party has ended.'}</p>
+          <Link className="button" to="/">
+            Return Home
+          </Link>
+        </section>
       </section>
     );
   return (
@@ -481,6 +628,8 @@ export function PartyGame() {
           busy={game.busy}
           settings={game.settings}
           start={() => void game.action('start')}
+          kick={game.kick}
+          error={game.error}
         />
       ) : state.status === 'complete' ? (
         <section className="panel final-results">
@@ -623,13 +772,17 @@ export function PartyGame() {
                 <Leaderboard players={state.leaderboard} me={state.me_id} round finished />
               </section>
             )}
-            <section className="panel party-overall">
-              <Leaderboard
-                players={state.leaderboard}
-                me={state.me_id}
-                finished={round.status === 'results'}
-              />
-            </section>
+            {round.status !== 'results' && (
+              <p className="party-solved-status" role="status">
+                {state.leaderboard.filter((player) => !player.left && player.solved).length} of{' '}
+                {state.leaderboard.filter((player) => !player.left).length} players solved
+              </p>
+            )}
+            {round.status === 'results' && (
+              <section className="panel party-overall">
+                <Leaderboard players={state.leaderboard} me={state.me_id} finished />
+              </section>
+            )}
           </>
         )
       )}

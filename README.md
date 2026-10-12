@@ -1,10 +1,10 @@
-# Pixelguessr · Phase 3
+# Pixelguessr · Phase 3.1
 
-A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 3 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
+A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 3.1 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
 
 ## Implemented
 
-- Real-time guest/account parties: six-character invites, up to 12 players, host-only 15/30/45/60-second reveals and 5/10/15/20-round matches. Shared countdowns, masked images, live standings, spectator states, automatic results/round transitions, reconnect recovery, host succession, and return-to-lobby replay. Incorrect guesses cost 50 points with a server-enforced two-second cooldown. See [party operation and two-session test plan](docs/parties.md).
+- Real-time guest/account parties: six-character invites, up to 12 players, host-only 15/30/45/60-second reveals and 5/10/15/20-round matches. Shared countdowns, masked images, compact solved-player status during gameplay, full intermission/final standings, spectator states, automatic results/round transitions, and return-to-lobby replay. Host removal includes an accessible confirmation and optional party-specific identity ban. Guests receive automatic persistent party names. Brief disconnects retain membership for a 15-second presence lease; host departures close the lobby or abort the match, and fewer than two remaining players abort an active match. There is no host succession. Incorrect guesses cost 50 points with a server-enforced two-second cooldown. See [party operation and two-session test plan](docs/parties.md).
 
 - Guest and account singleplayer at `/singleplayer`: exactly five sequential rounds with randomized 20×20 reveals over **45 seconds**, unlimited guesses without penalty/cooldown, canonical/synonym matching, and persisted progress/score. Correct guesses earn up to 1,000 points per round; totals are out of 5,000.
 - Server-authoritative round state and reveal timing, durable session recovery, idempotent starts/submissions, 24-hour game expiry, private masked WebP frames, and explicit empty/loading/reconnect/error states. Raw originals and unrevealed answers/order never reach the client.
@@ -82,7 +82,7 @@ npm test
 npm run build
 ```
 
-Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests additionally cover party permissions, capacity, host succession, WebSocket origin/session authorization, shared reveals, persisted cooldowns, negative scores, deadline progression, replay, and concurrent mutations. Backend tests cover guest/account gameplay, CSRF and ownership, normalized synonyms, pixel-level reveal security/timing, guessing after full reveal, retries/expiry, snapshots, missing storage, and explicit fixture review, alongside the existing foundation regressions. Frontend tests cover gameplay, refresh, recovery, completion, empty/expired rounds, stale polling, availability, routing, and CSRF transport.
+Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests additionally cover party permissions, capacity, kick/identity bans, departure/grace/abort races, WebSocket origin/session authorization, shared reveals, persisted cooldowns, negative scores, deadline progression, replay, and concurrent mutations. Backend tests cover guest/account gameplay, CSRF and ownership, normalized synonyms, pixel-level reveal security/timing, guessing after full reveal, retries/expiry, snapshots, missing storage, and explicit fixture review, alongside the existing foundation regressions. Frontend tests cover gameplay, refresh, recovery, completion, empty/expired rounds, stale polling, availability, routing, and CSRF transport.
 
 Upload tests use the built-in pytest `tmp_path` fixture. Pytest creates and manages temporary directories under the operating system temporary location on Windows and Linux; no custom base-temp directory or pre-existing `.pytest_cache` folder is required.
 

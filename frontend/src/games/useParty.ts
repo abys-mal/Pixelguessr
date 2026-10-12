@@ -7,6 +7,8 @@ export function useParty(code: string) {
   const [loading, setLoading] = useState(true);
   const [joinNeeded, setJoinNeeded] = useState(false);
   const [error, setError] = useState('');
+  const [accessCode, setAccessCode] = useState('');
+  const terminated = useRef(false);
   const [connection, setConnection] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -18,7 +20,7 @@ export function useParty(code: string) {
   const alive = useRef(true);
   const requests = useRef(new Map<string, string>());
   const accept = useCallback((next: PartyState) => {
-    if (!alive.current) return;
+    if (!alive.current || terminated.current) return;
     const previous = latest.current;
     if (
       previous &&
@@ -34,6 +36,23 @@ export function useParty(code: string) {
     setState(next);
     setJoinNeeded(false);
     setLoading(false);
+    if (next.status === 'aborted' || next.status === 'closed') {
+      terminated.current = true;
+      stream.current?.close();
+      stream.current = null;
+    }
+  }, []);
+  const denyAccess = useCallback((err: ApiError) => {
+    if (!alive.current) return;
+    terminated.current = true;
+    stream.current?.close();
+    stream.current = null;
+    latest.current = null;
+    setState(null);
+    setJoinNeeded(false);
+    setLoading(false);
+    setError(err.message);
+    setAccessCode(err.code || 'party_access_denied');
   }, []);
   useEffect(() => {
     alive.current = true;
@@ -41,29 +60,29 @@ export function useParty(code: string) {
     let reading = false;
     let online = false;
     const read = async () => {
-      if (disposed || reading) return;
+      if (disposed || reading || terminated.current) return;
       reading = true;
       try {
         const next = await partyApi.current(code);
         if (disposed) return;
         accept(next);
         setError('');
-        if (!stream.current)
-          stream.current = connectParty(code, accept, (connected) => {
-            online = connected;
-            if (!disposed) setConnection(connected);
-          });
+        if (!stream.current && !terminated.current)
+          stream.current = connectParty(
+            code,
+            accept,
+            (connected) => {
+              online = connected;
+              if (!disposed) setConnection(connected);
+            },
+            denyAccess,
+          );
       } catch (err) {
         if (disposed) return;
-        if (err instanceof ApiError && err.status === 404) setJoinNeeded(true);
+        if (err instanceof ApiError && (err.status === 403 || err.status === 410)) denyAccess(err);
+        else if (err instanceof ApiError && err.status === 404) setJoinNeeded(true);
         else {
           setError(err instanceof Error ? err.message : 'Unable to load this party.');
-          if (err instanceof ApiError && err.status === 410) {
-            setState(null);
-            latest.current = null;
-            stream.current?.close();
-            stream.current = null;
-          }
         }
         setLoading(false);
       } finally {
@@ -95,7 +114,7 @@ export function useParty(code: string) {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [code, accept]);
+  }, [code, accept, denyAccess]);
   const perform = async (key: string, action: (requestId: string) => Promise<PartyState>) => {
     if (lock.current) return false;
     lock.current = true;
@@ -108,7 +127,12 @@ export function useParty(code: string) {
       requests.current.delete(key);
       return true;
     } catch (err) {
-      if (alive.current) setError(err instanceof Error ? err.message : 'Try again.');
+      if (
+        err instanceof ApiError &&
+        ['party_removed', 'party_banned', 'membership_expired'].includes(err.code || '')
+      )
+        denyAccess(err);
+      else if (alive.current) setError(err instanceof Error ? err.message : 'Try again.');
       if (err instanceof ApiError && err.status < 500) requests.current.delete(key);
       return false;
     } finally {
@@ -122,10 +146,13 @@ export function useParty(code: string) {
     joinNeeded,
     error,
     connection,
+    accessCode,
     busy,
     feedback,
     now,
-    join: (name: string) => perform('join', () => partyApi.join(code, name)),
+    join: () => perform('join', () => partyApi.join(code)),
+    kick: (target: string, ban: boolean) =>
+      perform(`kick:${target}:${ban}`, (id) => partyApi.kick(code, target, ban, id)),
     settings: (settings: PartyState['settings']) =>
       perform('settings', () => partyApi.settings(code, settings)),
     action: (action: 'start' | 'lobby') =>

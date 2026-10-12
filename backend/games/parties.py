@@ -2,7 +2,6 @@
 
 import secrets
 import string
-import unicodedata
 from datetime import timedelta
 
 from asgiref.sync import async_to_sync
@@ -11,7 +10,7 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.utils import timezone
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 
 from .models import (
     Guess,
@@ -40,7 +39,12 @@ MAX_PLAYERS = 12
 COUNTDOWN_SECONDS = 3
 RESULT_SECONDS = 5
 PRESENCE_SECONDS = 15
-HOST_GRACE_SECONDS = 45
+RECONNECT_GRACE_SECONDS = 15
+END_MESSAGES = {
+    "host_left": "The host left the party.",
+    "host_disconnected": "The host disconnected.",
+    "not_enough_players": "Not enough players remain.",
+}
 
 
 def group_name(code):
@@ -82,55 +86,74 @@ def check_access(request):
 
 def member_for(party, request):
     check_access(request)
-    member = party.members.filter(identity_filter(request), left_at__isnull=True).first()
+    matches = party.members.filter(identity_filter(request))
+    if matches.filter(banned_at__isnull=False).exists():
+        raise GameError("You were removed and cannot rejoin this party.", "party_banned", 403)
+    member = matches.filter(left_at__isnull=True).first()
     if not member:
+        previous = matches.first()
+        if previous and previous.departure_reason in ("kicked", "disconnected"):
+            code = (
+                "party_removed" if previous.departure_reason == "kicked" else "membership_expired"
+            )
+            message = (
+                "You were removed from this party."
+                if code == "party_removed"
+                else "Your connection to this party expired."
+            )
+            raise GameError(message, code, 403)
         raise NotFound("Join this party before continuing.")
     return member
 
 
-def lock_party(code):
-    # Make this the FIRST database operation in a transaction. SQLite ignores FOR UPDATE.
+def lock_party(code, *, allow_closed=False):
+    # FIRST operation in a transaction: SQLite ignores FOR UPDATE.
     if not Party.objects.filter(code=code.upper()).update(revision=F("revision")):
         raise NotFound("That party code is invalid.")
     party = Party.objects.get(code=code.upper())
-    if party.status == Party.Status.CLOSED or timezone.now() >= party.expires_at:
+    if timezone.now() >= party.expires_at or (
+        party.status == Party.Status.CLOSED and not allow_closed
+    ):
         raise GameError(
             "This party has closed or expired. Create a new party.", "party_closed", 410
         )
     return party
 
 
-def guest_name(value):
-    value = " ".join(unicodedata.normalize("NFKC", value).split())
-    if not 2 <= len(value) <= 24 or any(
-        unicodedata.category(c)[0] not in "LN" and c not in " .-_’'" for c in value
-    ):
-        raise GameError(
-            "Use a display name of 2–24 letters, numbers, spaces, or simple punctuation.",
-            "invalid_name",
-            400,
-        )
-    if not any(unicodedata.category(c)[0] in "LN" for c in value):
-        raise GameError("Your display name needs a letter or number.", "invalid_name", 400)
-    return value
+def automatic_guest_name(party, existing):
+    # Names are presentation only; identity stays in the existing signed server session.
+    used = set(
+        party.members.filter(left_at__isnull=True)
+        .exclude(pk=existing.pk if existing else None)
+        .values_list("name_key", flat=True)
+    )
+    if existing and existing.display_name.casefold() not in used:
+        return existing.display_name
+    first = secrets.randbelow(9000)
+    for offset in range(9000):
+        name = f"Guest {1000 + (first + offset) % 9000}"
+        if name.casefold() not in used:
+            return name
+    raise GameError("Unable to assign a guest name.", "name_unavailable", 503)
 
 
-def add_member(party, request, name, now):
-    existing = party.members.filter(identity_filter(request)).first()
+def add_member(party, request, now):
+    matches = party.members.filter(identity_filter(request))
+    if matches.filter(banned_at__isnull=False).exists():
+        raise GameError("You were removed and cannot rejoin this party.", "party_banned", 403)
+    existing = matches.first()
     if existing and existing.left_at is None:
         existing.last_seen = now
         existing.save(update_fields=["last_seen"])
         return existing
     if party.status != Party.Status.LOBBY:
-        raise GameError(
-            "This game has started. Join when the party returns to the lobby.", "match_started"
-        )
+        raise GameError("This game has started or ended. Join a new party.", "match_started")
     if party.members.filter(left_at__isnull=True).count() >= MAX_PLAYERS:
         raise GameError("This party is full (12 players).", "party_full")
     name = (
         (request.user.display_name or request.user.username)[:40]
         if request.user.is_authenticated
-        else guest_name(name)
+        else automatic_guest_name(party, existing)
     )
     original = name
     index = 2
@@ -139,10 +162,6 @@ def add_member(party, request, name, now):
         .exclude(pk=existing.pk if existing else None)
         .exists()
     ):
-        if not request.user.is_authenticated:
-            raise GameError(
-                "That display name is already in this party. Choose another.", "name_taken", 400
-            )
         name = f"{original[:32]} ({index})"
         index += 1
     if existing:
@@ -150,6 +169,7 @@ def add_member(party, request, name, now):
         existing.name_key = name.casefold()
         existing.last_seen = now
         existing.left_at = None
+        existing.departure_reason = ""
         existing.joined_at = now
         existing.save()
         member = existing
@@ -197,16 +217,19 @@ def create_party(request, data):
                     return existing.code
                 if not Party.objects.filter(code=code).exists():
                     raise
-        add_member(party, request, data.get("display_name", ""), now)
+        add_member(party, request, now)
     return party.code
 
 
-def join_party(request, code, name):
+def join_party(request, code):
     check_access(request)
+    # Commit due terminal transitions even if joining is subsequently rejected.
+    with transaction.atomic():
+        party = lock_party(code, allow_closed=True)
+        advance(party, timezone.now())
     with transaction.atomic():
         party = lock_party(code)
-        advance(party, timezone.now())
-        add_member(party, request, name, timezone.now())
+        add_member(party, request, timezone.now())
     return party.code
 
 
@@ -215,23 +238,51 @@ def require_host(party, member):
         raise GameError("Only the host can do that.", "host_only", 403)
 
 
-def succession(party, now):
-    members = list(party.members.filter(left_at__isnull=True).order_by("joined_at", "id"))
+def end_party(party, reason, now):
+    if party.status in (Party.Status.ABORTED, Party.Status.CLOSED):
+        return
+    if party.status == Party.Status.PLAYING:
+        match = party.current_match
+        match.status = Match.Status.ABORTED
+        match.party_abort_reason = reason
+        match.completed_at = now
+        match.save(update_fields=["status", "party_abort_reason", "completed_at"])
+        party.status = Party.Status.ABORTED
+    else:
+        party.status = Party.Status.CLOSED
+    party.end_reason = reason
+    party.message = ""
+    changed(party)
+
+
+def reconcile_members(party, now):
+    if party.status in (Party.Status.ABORTED, Party.Status.CLOSED):
+        return
+    members = list(party.members.filter(left_at__isnull=True))
     host = next((m for m in members if m.pk == party.host_id), None)
-    if not host or (now - host.last_seen).total_seconds() > HOST_GRACE_SECONDS:
-        successor = next(
-            (m for m in members if (now - m.last_seen).total_seconds() <= HOST_GRACE_SECONDS), None
-        )
-        if party.host_id != (successor.pk if successor else None):
-            party.host = successor
-            changed(party)
+    if not host or (now - host.last_seen).total_seconds() > RECONNECT_GRACE_SECONDS:
+        end_party(party, "host_disconnected", now)
+        return
+    expired = [
+        m
+        for m in members
+        if m.pk != party.host_id and (now - m.last_seen).total_seconds() > RECONNECT_GRACE_SECONDS
+    ]
+    for member in expired:
+        member.left_at = member.last_seen + timedelta(seconds=RECONNECT_GRACE_SECONDS)
+        member.departure_reason = "disconnected"
+        member.save(update_fields=["left_at", "departure_reason"])
+    if expired:
+        changed(party)
+    if party.status == Party.Status.PLAYING and len(members) - len(expired) < 2:
+        end_party(party, "not_enough_players", now)
 
 
 def settings_party(request, code, data):
+    party_state(request, code, heartbeat=True)
     with transaction.atomic():
         party = lock_party(code)
         member = member_for(party, request)
-        succession(party, timezone.now())
         require_host(party, member)
         if party.status != Party.Status.LOBBY:
             raise GameError(
@@ -243,20 +294,27 @@ def settings_party(request, code, data):
         changed(party)
 
 
-def command_seen(party, member, action, request_id):
+def command_seen(party, member, action, request_id, *, target=None, prevent_rejoin=False):
     previous = PartyCommand.objects.filter(pk=request_id).first()
     if previous:
         if (
             previous.party_id != party.pk
             or previous.member_id != member.pk
             or previous.action != action
+            or previous.target_id != (target.pk if target else None)
+            or previous.prevent_rejoin != prevent_rejoin
         ):
             raise GameError("This request was already used for another action.", "request_conflict")
         return True
     try:
         with transaction.atomic():
             PartyCommand.objects.create(
-                request_id=request_id, party=party, member=member, action=action
+                request_id=request_id,
+                party=party,
+                member=member,
+                action=action,
+                target=target,
+                prevent_rejoin=prevent_rejoin,
             )
     except IntegrityError:
         raise GameError("This request was already used.", "request_conflict") from None
@@ -286,11 +344,11 @@ def activate(party, game_round, start_at):
 
 
 def start_party(request, code, request_id):
+    party_state(request, code, heartbeat=True)
     with transaction.atomic():
         party = lock_party(code)
         now = timezone.now()
         member = member_for(party, request)
-        succession(party, now)
         require_host(party, member)
         if command_seen(party, member, "start", request_id):
             return
@@ -356,7 +414,7 @@ def current_round(party):
 
 
 def advance(party, now):
-    succession(party, now)
+    reconcile_members(party, now)
     if party.status != Party.Status.PLAYING:
         return
     game_round = current_round(party)
@@ -366,6 +424,14 @@ def advance(party, now):
         )
         if not game_round.ended_at and now >= deadline:
             finish(party, game_round, deadline)
+        elif (
+            not game_round.ended_at
+            and now >= game_round.reveal_started_at
+            and not game_round.player_states.filter(
+                participant__party_member__left_at__isnull=True, solved_at__isnull=True
+            ).exists()
+        ):
+            finish(party, game_round, now)
         if not game_round.ended_at or party.status == Party.Status.COMPLETE:
             return
         next_at = game_round.ended_at + timedelta(seconds=RESULT_SECONDS)
@@ -392,32 +458,21 @@ def advance(party, now):
 
 
 def touch(request, code):
-    with transaction.atomic():
-        party = lock_party(code)
-        member = member_for(party, request)
-        member.last_seen = timezone.now()
-        member.save(update_fields=["last_seen"])
-        succession(party, member.last_seen)
+    party_state(request, code, heartbeat=True)
 
 
-def leave_party(request, code):
-    with transaction.atomic():
-        party = lock_party(code)
-        member = member_for(party, request)
-        now = timezone.now()
-        member.left_at = now
-        member.save(update_fields=["left_at"])
-        if party.host_id == member.pk:
-            party.host = (
-                party.members.filter(left_at__isnull=True).order_by("joined_at", "id").first()
-            )
-        if not party.members.filter(left_at__isnull=True).exists():
-            party.status = Party.Status.CLOSED
-            if party.current_match_id:
-                Match.objects.filter(pk=party.current_match_id, status=Match.Status.ACTIVE).update(
-                    status=Match.Status.ABANDONED
-                )
-        elif party.status == Party.Status.PLAYING:
+def remove_member(party, member, now, *, reason, ban=False):
+    member.left_at = now
+    member.departure_reason = reason
+    if ban:
+        member.banned_at = now
+    member.save(update_fields=["left_at", "departure_reason", "banned_at"])
+    if party.host_id == member.pk:
+        end_party(party, "host_left", now)
+    elif party.status == Party.Status.PLAYING:
+        if party.members.filter(left_at__isnull=True).count() < 2:
+            end_party(party, "not_enough_players", now)
+        else:
             game_round = current_round(party)
             if (
                 not game_round.ended_at
@@ -426,10 +481,42 @@ def leave_party(request, code):
                 ).exists()
             ):
                 finish(party, game_round, now)
-        changed(party)
+    if not party.members.filter(left_at__isnull=True).exists():
+        party.status = Party.Status.CLOSED
+    changed(party)
+
+
+def leave_party(request, code):
+    with transaction.atomic():
+        party = lock_party(code, allow_closed=True)
+        member = member_for(party, request)
+        remove_member(party, member, timezone.now(), reason="left")
+
+
+def kick_party(request, code, target_id, prevent_rejoin, request_id):
+    party_state(request, code, heartbeat=True)
+    with transaction.atomic():
+        party = lock_party(code)
+        member = member_for(party, request)
+        require_host(party, member)
+        target = party.members.filter(pk=target_id).first()
+        if not target:
+            raise NotFound("That player is not in this party.")
+        if target.pk == party.host_id:
+            raise GameError("The host cannot remove themselves.", "cannot_kick_host", 400)
+        if command_seen(
+            party, member, "kick", request_id, target=target, prevent_rejoin=prevent_rejoin
+        ):
+            return
+        if party.status not in (Party.Status.LOBBY, Party.Status.PLAYING):
+            raise GameError("This party has ended.", "party_ended")
+        if target.left_at:
+            raise NotFound("That player is no longer in this party.")
+        remove_member(party, target, timezone.now(), reason="kicked", ban=prevent_rejoin)
 
 
 def lobby_party(request, code, request_id):
+    party_state(request, code, heartbeat=True)
     with transaction.atomic():
         party = lock_party(code)
         member = member_for(party, request)
@@ -446,78 +533,92 @@ def lobby_party(request, code, request_id):
 
 
 def submit_party_guess(request, code, round_id, text, request_id):
-    # Commit due transitions independently of any subsequent invalid guess rejection.
+    error = None
+    result = None
     with transaction.atomic():
         party = lock_party(code)
         member_for(party, request)
-        advance(party, timezone.now())
-    with transaction.atomic():
-        party = lock_party(code)
-        member = member_for(party, request)
         now = timezone.now()
         advance(party, now)
-        previous = Guess.objects.filter(request_id=request_id).first()
-        if previous:
-            if (
-                previous.round_id != round_id
-                or previous.participant.party_member_id != member.pk
-                or normalize_guess(previous.text) != normalize_guess(text)
-            ):
-                raise GameError("This request was used for another guess.", "request_conflict")
-            return "correct" if previous.correct else "incorrect"
-        game_round = current_round(party)
+        try:
+            # Recheck membership after grace reconciliation in the SAME writer transaction.
+            member = member_for(party, request)
+            result = record_party_guess(party, member, round_id, text, request_id, now)
+        except APIException as exc:
+            error = exc
+    # Due departures/deadlines must commit even when this guess is rejected.
+    if error:
+        raise error
+    return result
+
+
+def record_party_guess(party, member, round_id, text, request_id, now):
+    if party.status == Party.Status.ABORTED:
+        raise GameError(END_MESSAGES.get(party.end_reason, "This match ended."), "match_aborted")
+    previous = Guess.objects.filter(request_id=request_id).first()
+    if previous:
         if (
-            party.status != Party.Status.PLAYING
-            or not game_round
-            or game_round.pk != round_id
-            or game_round.ended_at
+            previous.round_id != round_id
+            or previous.participant.party_member_id != member.pk
+            or normalize_guess(previous.text) != normalize_guess(text)
         ):
-            raise GameError("This round has ended or is no longer current.", "round_ended")
-        if now < game_round.reveal_started_at:
-            raise GameError("Wait for the round to begin.", "round_not_started")
-        state = game_round.player_states.select_related("participant").get(
-            participant__party_member=member
-        )
-        if state.solved_at:
-            raise GameError("You already solved this round. Watch until it ends.", "already_solved")
-        if state.cooldown_until and now < state.cooldown_until:
-            raise GameError("Wait two seconds after an incorrect guess.", "guess_cooldown", 429)
-        accepted = [game_round.answer_snapshot, *game_round.synonyms_snapshot]
-        correct = normalize_guess(text) in {normalize_guess(answer) for answer in accepted}
-        Guess.objects.create(
-            round=game_round,
-            participant=state.participant,
-            sequence=game_round.guesses.filter(participant=state.participant).count() + 1,
-            request_id=request_id,
-            text=text,
-            correct=correct,
-        )
-        if correct:
-            count = revealed_count(game_round, now)
-            state.score = (
-                score_for_reveal(count, game_round.grid_size**2) - 50 * state.incorrect_count
-            )
-            state.solved_at = now
-            state.solve_revealed_count = count
-            state.cooldown_until = None
-        else:
-            state.incorrect_count += 1
-            state.score = -50 * state.incorrect_count
-            state.cooldown_until = now + timedelta(seconds=2)
-        state.save()
-        state.participant.total_score = max(0, state.total_before + state.score)
-        state.participant.save(update_fields=["total_score"])
-        if not game_round.player_states.filter(
-            participant__party_member__left_at__isnull=True, solved_at__isnull=True
-        ).exists():
-            finish(party, game_round, now)
-        changed(party)
-        return "correct" if correct else "incorrect"
+            raise GameError("This request was used for another guess.", "request_conflict")
+        return "correct" if previous.correct else "incorrect"
+    game_round = current_round(party)
+    if (
+        party.status != Party.Status.PLAYING
+        or not game_round
+        or game_round.pk != round_id
+        or game_round.ended_at
+    ):
+        raise GameError("This round has ended or is no longer current.", "round_ended")
+    if now < game_round.reveal_started_at:
+        raise GameError("Wait for the round to begin.", "round_not_started")
+    state = game_round.player_states.select_related("participant").get(
+        participant__party_member=member
+    )
+    if state.solved_at:
+        raise GameError("You already solved this round. Watch until it ends.", "already_solved")
+    if state.cooldown_until and now < state.cooldown_until:
+        raise GameError("Wait two seconds after an incorrect guess.", "guess_cooldown", 429)
+    accepted = [game_round.answer_snapshot, *game_round.synonyms_snapshot]
+    correct = normalize_guess(text) in {normalize_guess(answer) for answer in accepted}
+    Guess.objects.create(
+        round=game_round,
+        participant=state.participant,
+        sequence=game_round.guesses.filter(participant=state.participant).count() + 1,
+        request_id=request_id,
+        text=text,
+        correct=correct,
+    )
+    if correct:
+        count = revealed_count(game_round, now)
+        state.score = score_for_reveal(count, game_round.grid_size**2) - 50 * state.incorrect_count
+        state.solved_at = now
+        state.solve_revealed_count = count
+        state.cooldown_until = None
+    else:
+        state.incorrect_count += 1
+        state.score = -50 * state.incorrect_count
+        state.cooldown_until = now + timedelta(seconds=2)
+    state.save()
+    state.participant.total_score = max(0, state.total_before + state.score)
+    state.participant.save(update_fields=["total_score"])
+    if not game_round.player_states.filter(
+        participant__party_member__left_at__isnull=True, solved_at__isnull=True
+    ).exists():
+        finish(party, game_round, now)
+    changed(party)
+    return "correct" if correct else "incorrect"
 
 
 def payload(party, member, now):
     members = list(party.members.filter(left_at__isnull=True).order_by("joined_at", "id"))
-    game_round = current_round(party) if party.status != Party.Status.LOBBY else None
+    game_round = (
+        current_round(party)
+        if party.status in (Party.Status.PLAYING, Party.Status.COMPLETE)
+        else None
+    )
     data = {
         "code": party.code,
         "status": party.status,
@@ -540,6 +641,8 @@ def payload(party, member, now):
         "leaderboard": [],
         "winners": [],
         "message": party.message,
+        "end_reason": party.end_reason,
+        "end_message": END_MESSAGES.get(party.end_reason, ""),
         "rules": {
             "max_players": MAX_PLAYERS,
             "countdown_seconds": COUNTDOWN_SECONDS,
@@ -642,25 +745,40 @@ def payload(party, member, now):
 
 
 def party_state(request, code, *, heartbeat=False):
+    error = None
     with transaction.atomic():
-        party = lock_party(code)
+        party = lock_party(code, allow_closed=True)
         member = member_for(party, request)
         now = timezone.now()
-        if heartbeat:
-            member.last_seen = now
-            member.save(update_fields=["last_seen"])
+        # Check elapsed grace BEFORE renewing presence, so late reconnects cannot resurrect a match.
         advance(party, now)
-        return payload(party, member, now)
+        member.refresh_from_db()
+        if member.left_at:
+            error = GameError("Your connection to this party expired.", "membership_expired", 403)
+            data = None
+        else:
+            if heartbeat and party.status not in (Party.Status.ABORTED, Party.Status.CLOSED):
+                member.last_seen = now
+                member.save(update_fields=["last_seen"])
+            data = payload(party, member, now)
+    if error:
+        raise error
+    return data
 
 
 def party_image(request, code, round_id):
+    party_state(request, code)
     with transaction.atomic():
         party = lock_party(code)
         member_for(party, request)
         now = timezone.now()
         advance(party, now)
         game_round = current_round(party)
-        if not game_round or game_round.pk != round_id or party.status == Party.Status.LOBBY:
+        if (
+            party.status not in (Party.Status.PLAYING, Party.Status.COMPLETE)
+            or not game_round
+            or game_round.pk != round_id
+        ):
             raise NotFound("Only the current round image is available.")
         count = game_round.grid_size**2 if game_round.ended_at else revealed_count(game_round, now)
         return game_round, now, count

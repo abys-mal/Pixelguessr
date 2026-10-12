@@ -6,6 +6,7 @@ from .party_views import (
     PartyGuessView,
     PartyImageView,
     PartyJoinView,
+    PartyKickView,
     PartyView,
 )
 
@@ -13,6 +14,7 @@ urlpatterns = [
     path("", PartyCreateView.as_view()),
     path("<str:code>/", PartyView.as_view()),
     path("<str:code>/join/", PartyJoinView.as_view()),
+    path("<str:code>/kick/", PartyKickView.as_view()),
     path("<str:code>/guesses/", PartyGuessView.as_view()),
     path("<str:code>/rounds/<uuid:pk>/image/", PartyImageView.as_view()),
     *[

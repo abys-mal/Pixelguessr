@@ -2,7 +2,6 @@ from collections.abc import Mapping
 
 from rest_framework import serializers
 
-from .parties import guest_name
 from .serializers import GuessSerializer, StartRoundSerializer
 
 
@@ -22,20 +21,19 @@ class PartySettingsSerializer(serializers.Serializer):
 
 
 class JoinPartySerializer(serializers.Serializer):
-    display_name = serializers.CharField(max_length=40, required=False, default="")
-
-    def validate_display_name(self, value):
-        request = self.context["request"]
-        return value if request.user.is_authenticated else guest_name(value)
+    # Legacy supplied names are ignored; all guest names are server generated.
+    pass
 
 
 class CreatePartySerializer(PartySettingsSerializer):
     request_id = serializers.UUIDField()
-    display_name = serializers.CharField(max_length=40, required=False, default="")
+    display_name = serializers.CharField(required=False, write_only=True, allow_blank=True)
 
-    def validate_display_name(self, value):
-        request = self.context["request"]
-        return value if request.user.is_authenticated else guest_name(value)
+
+class PartyKickSerializer(serializers.Serializer):
+    target_id = serializers.UUIDField()
+    prevent_rejoin = serializers.BooleanField(default=False)
+    request_id = serializers.UUIDField()
 
 
 class PartyGuessSerializer(GuessSerializer):

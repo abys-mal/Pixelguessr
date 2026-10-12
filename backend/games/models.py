@@ -16,6 +16,7 @@ class Match(models.Model):
         ACTIVE = "active", "Active"
         COMPLETE = "complete", "Complete"
         ABANDONED = "abandoned", "Abandoned"
+        ABORTED = "aborted", "Aborted"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     mode = models.CharField(max_length=12, choices=Mode)
@@ -24,6 +25,7 @@ class Match(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     elo_applied_at = models.DateTimeField(null=True, blank=True)
     party_round_limit = models.PositiveSmallIntegerField(default=0, editable=False)
+    party_abort_reason = models.CharField(max_length=24, blank=True, editable=False)
     # Legacy one-round games remain historical; new singleplayer games use five.
     singleplayer_round_limit = models.PositiveSmallIntegerField(default=1, editable=False)
     singleplayer_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
@@ -188,6 +190,7 @@ class Party(models.Model):
         PLAYING = "playing", "Playing"
         COMPLETE = "complete", "Complete"
         CLOSED = "closed", "Closed"
+        ABORTED = "aborted", "Aborted"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=6, unique=True)
@@ -203,6 +206,7 @@ class Party(models.Model):
     )
     revision = models.PositiveIntegerField(default=1)
     message = models.CharField(max_length=240, blank=True)
+    end_reason = models.CharField(max_length=24, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
 
@@ -229,6 +233,8 @@ class PartyMember(models.Model):
     joined_at = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField()
     left_at = models.DateTimeField(null=True, blank=True)
+    departure_reason = models.CharField(max_length=12, blank=True)
+    banned_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -260,3 +266,7 @@ class PartyCommand(models.Model):
     party = models.ForeignKey(Party, on_delete=models.CASCADE)
     member = models.ForeignKey(PartyMember, on_delete=models.CASCADE)
     action = models.CharField(max_length=12)
+    target = models.ForeignKey(
+        PartyMember, null=True, blank=True, on_delete=models.PROTECT, related_name="removals"
+    )
+    prevent_rejoin = models.BooleanField(default=False)

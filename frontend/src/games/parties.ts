@@ -36,7 +36,7 @@ export interface PartyRound {
 }
 export interface PartyState {
   code: string;
-  status: 'lobby' | 'playing' | 'complete' | 'closed';
+  status: 'lobby' | 'playing' | 'complete' | 'closed' | 'aborted';
   revision: number;
   server_now: string;
   expires_at: string;
@@ -49,6 +49,8 @@ export interface PartyState {
   leaderboard: PartyScore[];
   winners: string[];
   message: string;
+  end_reason: string;
+  end_message: string;
 }
 export interface PartyGuess {
   round_id: string;
@@ -61,16 +63,17 @@ export interface PartyGuessResult {
 }
 const url = (code: string) => `/api/parties/${encodeURIComponent(code.toUpperCase())}/`;
 export const partyApi = {
-  create: (data: {
-    reveal_seconds: number;
-    round_limit: number;
-    display_name: string;
-    request_id: string;
-  }) => api<PartyState>('/api/parties/', { method: 'POST', body: JSON.stringify(data) }),
-  join: (code: string, display_name: string) =>
+  create: (data: { reveal_seconds: number; round_limit: number; request_id: string }) =>
+    api<PartyState>('/api/parties/', { method: 'POST', body: JSON.stringify(data) }),
+  join: (code: string) =>
     api<PartyState>(url(code) + 'join/', {
       method: 'POST',
-      body: JSON.stringify({ display_name }),
+      body: JSON.stringify({}),
+    }),
+  kick: (code: string, target_id: string, prevent_rejoin: boolean, request_id: string) =>
+    api<PartyState>(url(code) + 'kick/', {
+      method: 'POST',
+      body: JSON.stringify({ target_id, prevent_rejoin, request_id }),
     }),
   current: (code: string) => api<PartyState>(url(code)),
   settings: (code: string, data: PartyState['settings']) =>
@@ -93,6 +96,7 @@ export function connectParty(
   code: string,
   onState: (state: PartyState) => void,
   onConnection: (online: boolean) => void,
+  onAccessDenied: (error: ApiError) => void = () => {},
 ): PartyConnection {
   let socket: WebSocket | null = null;
   let stopped = false;
@@ -106,10 +110,10 @@ export function connectParty(
       timeout: ReturnType<typeof setTimeout>;
     }
   >();
-  const rejectPending = () => {
+  const rejectPending = (error: Error = new Error('Connection interrupted.')) => {
     for (const item of pending.values()) {
       clearTimeout(item.timeout);
-      item.reject(new Error('Connection interrupted.'));
+      item.reject(error);
     }
     pending.clear();
   };
@@ -124,6 +128,16 @@ export function connectParty(
     };
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      if (message.type === 'access_denied') {
+        stopped = true;
+        clearTimeout(retry);
+        clearInterval(heartbeat);
+        const error = new ApiError(message.detail, message.status || 403, message.code);
+        rejectPending(error);
+        onAccessDenied(error);
+        socket?.close();
+        return;
+      }
       if (message.state) onState(message.state as PartyState);
       const item = pending.get(message.request_id);
       if (item) {

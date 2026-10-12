@@ -1767,3 +1767,66 @@ main {
     gap: 8px;
   }
 }
+
+.party-kick {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 25px;
+  cursor: pointer;
+}
+.party-kick:hover,
+.party-kick:focus-visible {
+  color: #ff858e;
+  background: #ff858e12;
+  border-color: #ff858e44;
+}
+.party-remove-dialog {
+  width: min(440px, calc(100vw - 32px));
+  color: var(--text);
+  background: #211f2b;
+  border: 1px solid #494254;
+  border-radius: 18px;
+  padding: 28px;
+}
+.party-remove-dialog::backdrop {
+  background: #090810bb;
+}
+.party-remove-dialog h2 {
+  margin-top: 0;
+}
+.party-remove-dialog p {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.party-ban-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  margin: 24px 0;
+  line-height: 1.5;
+}
+.party-ban-choice input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  flex: 0 0 18px;
+  margin: 3px 0 0;
+  accent-color: var(--violet);
+}
+.party-remove-dialog .danger {
+  background: #e66d7a;
+  color: #21121a;
+}
+.party-solved-status {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 24px 0;
+}

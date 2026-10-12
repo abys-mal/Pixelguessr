@@ -78,7 +78,16 @@ class PartyConsumer(AsyncJsonWebsocketConsumer):
             state = await database_sync_to_async(socket_state)(
                 self.session_key, self.code, heartbeat=heartbeat
             )
-        except APIException:
+        except APIException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {"detail": str(exc.detail)}
+            await self.send_json(
+                {
+                    "type": "access_denied",
+                    "detail": str(detail.get("detail", "This party is unavailable.")),
+                    "code": str(detail.get("code", "party_access_denied")),
+                    "status": exc.status_code,
+                }
+            )
             await self.close(code=4403)
             return False
         await self.send_json({"type": "state", "state": state})

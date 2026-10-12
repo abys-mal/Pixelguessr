@@ -86,6 +86,26 @@ describe('Party WebSocket transport', () => {
     expect(fallback).not.toHaveBeenCalled();
     connection.close();
   });
+  it('stops retries and pending guesses on an authoritative removal notice', async () => {
+    const denied = vi.fn();
+    const fallback = vi.spyOn(partyApi, 'guess');
+    const connection = connectParty('K7M2Q9', vi.fn(), vi.fn(), denied);
+    const socket = Socket.instances[0];
+    socket.open();
+    const pending = connection.guess(data);
+    socket.message({
+      type: 'access_denied',
+      detail: 'You were removed.',
+      status: 403,
+      code: 'party_banned',
+    });
+    await expect(pending).rejects.toThrow('You were removed.');
+    expect(denied).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(Socket.instances).toHaveLength(1);
+    connection.close();
+  });
   it('falls back before the socket opens without sending an unscoped guess', async () => {
     const fallback = vi.spyOn(partyApi, 'guess').mockResolvedValue({ state, result: 'correct' });
     const connection = connectParty('K7M2Q9', vi.fn(), vi.fn());

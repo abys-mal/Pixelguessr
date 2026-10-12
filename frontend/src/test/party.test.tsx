@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +23,7 @@ vi.mock('../games/parties', () => ({
     action: vi.fn(),
     leave: vi.fn(),
     guess: vi.fn(),
+    kick: vi.fn(),
   },
 }));
 vi.mock('../games/Reveal', () => ({ Reveal: () => <div aria-label="Server-masked picture" /> }));
@@ -37,6 +38,7 @@ const guest = {
 let current: PartyState;
 let push: (state: PartyState) => void;
 let online: (connected: boolean) => void;
+let deny: (error: ApiError) => void;
 let sendGuess: ReturnType<typeof vi.fn<(data: PartyGuess) => Promise<PartyGuessResult>>>;
 function makeParty(): PartyState {
   return {
@@ -57,6 +59,8 @@ function makeParty(): PartyState {
     leaderboard: [],
     winners: [],
     message: '',
+    end_reason: '',
+    end_message: '',
   };
 }
 function active(): PartyState {
@@ -126,8 +130,17 @@ beforeEach(() => {
     return current;
   });
   vi.mocked(partyApi.leave).mockResolvedValue(undefined);
-  vi.mocked(connectParty).mockImplementation((_code, onState, onConnection) => {
+  vi.mocked(partyApi.kick).mockImplementation(async (_code, id) => {
+    current = {
+      ...current,
+      members: current.members.filter((m) => m.id !== id),
+      revision: current.revision + 1,
+    };
+    return current;
+  });
+  vi.mocked(connectParty).mockImplementation((_code, onState, onConnection, onAccessDenied) => {
     push = onState;
+    deny = onAccessDenied!;
     online = onConnection;
     onConnection(true);
     return { guess: sendGuess, close: vi.fn() };
@@ -138,33 +151,31 @@ describe('Multiplayer parties', () => {
   it('creates a guest party with the only two configurable game settings', async () => {
     const user = userEvent.setup();
     page('/party/new');
+    expect(screen.queryByLabelText('Display name')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Reveal duration')).toHaveValue('30');
     expect(screen.getByLabelText('Number of rounds')).toHaveValue('10');
-    await user.type(screen.getByLabelText('Display name'), 'Avery');
     await user.selectOptions(screen.getByLabelText('Reveal duration'), '15');
     await user.selectOptions(screen.getByLabelText('Number of rounds'), '5');
     await user.click(screen.getByRole('button', { name: 'Create Party' }));
     await screen.findByRole('heading', { name: 'Party lobby' });
     expect(partyApi.create).toHaveBeenCalledWith(
-      expect.objectContaining({ display_name: 'Avery', reveal_seconds: 15, round_limit: 5 }),
+      expect.objectContaining({ reveal_seconds: 15, round_limit: 5 }),
     );
     expect(screen.getByRole('button', { name: 'Start Game' })).toBeEnabled();
   });
   it('joins using a lower-case invite code and display name', async () => {
     const user = userEvent.setup();
     page('/party/join');
-    await user.type(screen.getByLabelText('Display name'), 'Robin');
     await user.type(screen.getByLabelText('Party code'), 'k7m2q9');
     await user.click(screen.getByRole('button', { name: 'Join Party' }));
     await screen.findByRole('heading', { name: 'Party lobby' });
-    expect(partyApi.join).toHaveBeenCalledWith('K7M2Q9', 'Robin');
+    expect(partyApi.join).toHaveBeenCalledWith('K7M2Q9');
   });
   it('asks a new guest opening an invite link to join', async () => {
     const user = userEvent.setup();
     vi.mocked(partyApi.current).mockRejectedValue(new ApiError('Join first.', 404));
     page();
     await screen.findByRole('heading', { name: 'Join Party K7M2Q9' });
-    await user.type(screen.getByLabelText('Display name'), 'Robin');
     await user.click(screen.getByRole('button', { name: 'Join Party' }));
     await screen.findByRole('heading', { name: 'Party lobby' });
   });
@@ -174,7 +185,6 @@ describe('Multiplayer parties', () => {
       const user = userEvent.setup();
       vi.mocked(partyApi.join).mockRejectedValue(new ApiError(message, 409));
       page('/party/join');
-      await user.type(screen.getByLabelText('Display name'), 'Robin');
       await user.type(screen.getByLabelText('Party code'), 'K7M2Q9');
       await user.click(screen.getByRole('button', { name: 'Join Party' }));
       expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -184,6 +194,7 @@ describe('Multiplayer parties', () => {
     current.me_id = 'friend';
     page();
     await screen.findByRole('heading', { name: 'Party lobby' });
+    expect(screen.queryByRole('button', { name: /Remove Robin/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start Game' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Reveal duration')).not.toBeInTheDocument();
     expect(screen.getByText('Waiting for Avery to start.')).toBeInTheDocument();
@@ -263,7 +274,8 @@ describe('Multiplayer parties', () => {
     expect(screen.queryByLabelText('Your Guess')).not.toBeInTheDocument();
     expect(screen.queryByText('lighthouse')).not.toBeInTheDocument();
     expect(screen.getByText('Waiting for the round to end.')).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Overall leaderboard' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Overall leaderboard' })).not.toBeInTheDocument();
+    expect(screen.getByText('0 of 2 players solved')).toBeInTheDocument();
   });
   it('receives round results and automatic new rounds with a cleared focused input', async () => {
     const user = userEvent.setup();
@@ -313,10 +325,8 @@ describe('Multiplayer parties', () => {
     update(newState);
     act(() => online(true));
     expect(screen.queryByText(/Reconnecting/)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('table', { name: 'Overall leaderboard' }).querySelectorAll('td:last-child'),
-    ).toHaveLength(2);
-    expect(screen.getByRole('table', { name: 'Overall leaderboard' })).toHaveTextContent('563');
+    expect(screen.queryByRole('table', { name: 'Overall leaderboard' })).not.toBeInTheDocument();
+    expect(screen.getByText('0 of 2 players solved')).toBeInTheDocument();
     expect(partyApi.join).not.toHaveBeenCalled();
     expect(partyApi.create).not.toHaveBeenCalled();
   });
@@ -377,6 +387,140 @@ describe('Multiplayer parties', () => {
     await user.click(await screen.findByRole('button', { name: 'Leave Party' }));
     await screen.findByRole('heading', { name: 'Join Party' });
     expect(partyApi.leave).toHaveBeenCalledWith('K7M2Q9');
+  });
+  it('opens a host-only confirmation with an unchecked ban option, keyboard containment and focus restoration', async () => {
+    const user = userEvent.setup();
+    page();
+    const trigger = await screen.findByRole('button', { name: 'Remove Robin' });
+    expect(screen.queryByRole('button', { name: 'Remove Avery' })).not.toBeInTheDocument();
+    await user.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Remove player?' });
+    expect(dialog).toHaveAccessibleDescription('Remove Robin from this party?');
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: 'Prevent this player from re-joining',
+    });
+    expect(checkbox).not.toBeChecked();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(partyApi.kick).not.toHaveBeenCalled();
+    await user.tab();
+    expect(within(dialog).getByRole('button', { name: 'Remove player' })).toHaveFocus();
+    await user.tab();
+    expect(checkbox).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: 'Remove player' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(trigger).toHaveFocus();
+    expect(partyApi.kick).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('confirms removal with the selected party-ban option: %s', async (ban) => {
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('button', { name: 'Remove Robin' }));
+    if (ban) await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Remove player' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(partyApi.kick).toHaveBeenCalledWith('K7M2Q9', 'friend', ban, expect.any(String));
+    expect(screen.getByRole('heading', { name: /Lobby 1/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Start Game' })).toBeDisabled();
+  });
+  it('dismisses a confirmation safely when its target leaves remotely', async () => {
+    const user = userEvent.setup();
+    page();
+    await user.click(await screen.findByRole('button', { name: 'Remove Robin' }));
+    update({ ...current, members: current.members.slice(0, 1) });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Lobby 1/ })).toHaveFocus();
+    expect(partyApi.kick).not.toHaveBeenCalled();
+  });
+  it('shows a failed removal inside the confirmation without removing the player', async () => {
+    const user = userEvent.setup();
+    vi.mocked(partyApi.kick).mockRejectedValue(new ApiError('Try again later.', 503));
+    page();
+    await user.click(await screen.findByRole('button', { name: 'Remove Robin' }));
+    await user.click(screen.getByRole('button', { name: 'Remove player' }));
+    const dialog = screen.getByRole('dialog', { name: 'Remove player?' });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Try again later.');
+    expect(screen.getByRole('heading', { name: /Lobby 2/ })).toBeInTheDocument();
+  });
+  it.each(['The host left the party.', 'The host disconnected.', 'Not enough players remain.'])(
+    'ends the match with its authoritative explanation: %s',
+    async (message) => {
+      current = active();
+      page();
+      await screen.findByLabelText('Your Guess');
+      const previous = current;
+      update({ ...current, status: 'aborted', end_message: message, round: null });
+      expect(screen.getByRole('heading', { name: 'Match ended' })).toHaveFocus();
+      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(screen.queryByLabelText('Your Guess')).not.toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Return to Lobby' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Return Home' })).toHaveAttribute('href', '/');
+      act(() => push({ ...previous, revision: current.revision + 10 }));
+      expect(screen.getByRole('heading', { name: 'Match ended' })).toBeInTheDocument();
+    },
+  );
+  it('shows party closure when the lobby host leaves', async () => {
+    page();
+    await screen.findByRole('heading', { name: 'Party lobby' });
+    update({ ...current, status: 'closed', end_message: 'The host left the party.' });
+    expect(screen.getByRole('heading', { name: 'Party closed' })).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Start Game' })).not.toBeInTheDocument();
+  });
+  it.each(['party_removed', 'party_banned'])(
+    'stops a removed player from reconnecting or automatically joining: %s',
+    async (code) => {
+      current = active();
+      page();
+      await screen.findByLabelText('Your Guess');
+      act(() => deny(new ApiError('You were removed from this party.', 403, code)));
+      expect(screen.getByRole('heading', { name: 'Removed from party' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('Your Guess')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Join Party' })).not.toBeInTheDocument();
+      expect(partyApi.join).not.toHaveBeenCalled();
+      expect(vi.mocked(connectParty).mock.results[0].value.close).toHaveBeenCalled();
+    },
+  );
+  it('enforces a persisted removal notice after page refresh', async () => {
+    vi.mocked(partyApi.current).mockRejectedValue(
+      new ApiError('You cannot rejoin this party.', 403, 'party_banned'),
+    );
+    page();
+    await screen.findByRole('heading', { name: 'Removed from party' });
+    expect(connectParty).not.toHaveBeenCalled();
+    expect(partyApi.join).not.toHaveBeenCalled();
+  });
+  it('shows compact solved counts during gameplay and full standings only between rounds', async () => {
+    current = active();
+    current.leaderboard[1].solved = true;
+    page();
+    await screen.findByLabelText('Your Guess');
+    expect(screen.getByText('1 of 2 players solved')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    update({
+      ...current,
+      round: {
+        ...current.round!,
+        status: 'results',
+        completion: {
+          answer: 'lighthouse',
+          license: 'CC0',
+          attribution: 'Original',
+          category: 'Places',
+        },
+      },
+    });
+    expect(screen.getByRole('table', { name: 'Overall leaderboard' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Round ranking' })).toBeInTheDocument();
+    expect(screen.queryByText('1 of 2 players solved')).not.toBeInTheDocument();
+    update({ ...current, status: 'complete', winners: ['friend'] });
+    expect(screen.getByRole('table', { name: 'Overall leaderboard' })).toBeInTheDocument();
+    expect(screen.getByText('Winner: Robin')).toBeInTheDocument();
   });
   it('redirects the old party-mode route to creation', async () => {
     page('/modes/party');
