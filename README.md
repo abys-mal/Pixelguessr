@@ -1,15 +1,17 @@
-# Pixelguessr · Phase 2.1
+# Pixelguessr · Phase 3
 
-A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 2.1 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
+A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 3 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
 
 ## Implemented
+
+- Real-time guest/account parties: six-character invites, up to 12 players, host-only 15/30/45/60-second reveals and 5/10/15/20-round matches. Shared countdowns, masked images, live standings, spectator states, automatic results/round transitions, reconnect recovery, host succession, and return-to-lobby replay. Incorrect guesses cost 50 points with a server-enforced two-second cooldown. See [party operation and two-session test plan](docs/parties.md).
 
 - Guest and account singleplayer at `/singleplayer`: exactly five sequential rounds with randomized 20×20 reveals over **45 seconds**, unlimited guesses without penalty/cooldown, canonical/synonym matching, and persisted progress/score. Correct guesses earn up to 1,000 points per round; totals are out of 5,000.
 - Server-authoritative round state and reveal timing, durable session recovery, idempotent starts/submissions, 24-hour game expiry, private masked WebP frames, and explicit empty/loading/reconnect/error states. Raw originals and unrevealed answers/order never reach the client.
 - Forfeit becomes available only after full reveal and awards zero points. Round results show the answer, outcome, points, and total; Next Round waits for the player. Round 5 opens Final Results with all scores/outcomes, solved count, Play Again, and Return Home.
 - Four original CC0 illustrations, imported pending and explicitly reviewed only with `seed_dev_images --approve`. See [development image attribution](docs/development-images.md).
 
-- Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. The Singleplayer card opens the real game; Ranked and Parties remain explicitly unavailable.
+- Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. Singleplayer and Parties open playable games; Ranked remains explicitly unavailable.
 - Custom UUID user model from the first migration; password validation; registration, login, logout, profile reads, and display-name edits. Same-origin cookie sessions with CSRF protection, including anonymous login and registration.
 - Private curated image submissions by registered users: canonical answer, synonyms, category, source, license, attribution, external HTTPS references or validated uploads. Six initial categories are installed by migration. All submissions begin pending. Users can see only their own submissions.
 - Still JPEG/PNG/WebP validation (8 MB, 64–4096 px, 12 MP), re-encoding to WebP, stripped metadata, opaque UUID filenames, private local or S3-compatible storage, and an authenticated staff-only preview. The server never fetches a submitted URL.
@@ -18,10 +20,10 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 
 ## Scaffolded and deferred
 
-- Match, participant, expiring guest identity, round, per-round score/cooldown, and guess models. Guests are separate from user accounts. Round scores support negatives; cumulative scores are nonnegative.
-- ASGI and Channels/Redis routing. `/ws/matches/<uuid>/` rejects connections with code 4404; it does not accept or simulate a match. `/api/modes/` reports only singleplayer available.
+- Ranked matchmaking, first-to-four duels, and idempotent Elo updates remain deferred. Guests remain separate from user accounts.
+- ASGI and Channels/Redis routing. `/ws/parties/<code>/` provides real party sessions; `/ws/matches/<uuid>/` remains a rejecting ranked scaffold. `/api/modes/` reports singleplayer and parties available.
 - Profile and leaderboard shells. There are no match statistics or ranked standings. Ranked tiers exist without Elo thresholds. Initial rating 1000 is a provisional storage default, not a finalized policy.
-- Future phases: party create/join/reconnect/spectators; ranked matchmaking and first-to-four duels; idempotent Elo updates; match history and leaderboards.
+- Future phases: ranked matchmaking and first-to-four duels, match history, and public leaderboards.
 - Later account work: email verification, email/password changes and recovery, full appeals, and operational production deployment. No party chat is planned for V1.
 
 ## Start locally without Docker
@@ -47,6 +49,15 @@ npm ci
 npm run dev
 ```
 
+For parties, keep a third terminal running from the repository root:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe manage.py party_clock
+```
+
+This advances deadlines and expiry even when every browser disconnects. State/image requests and WebSocket snapshots also reconcile elapsed deadlines, so server restarts retain the original timeline. The clock stores essential state in SQLite; it does not require Redis.
+
 Open http://localhost:5173. Vite proxies `/api` and `/ws` to Django; this preserves same-origin cookies and avoids unnecessary CORS configuration. Do not substitute a different frontend port without updating the CSRF origins.
 
 Existing `.venv`, `.env`, and `frontend/node_modules` are already prepared in this local checkout; installation commands are needed only for a fresh setup.
@@ -71,7 +82,7 @@ npm test
 npm run build
 ```
 
-Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests cover guest/account gameplay, CSRF and ownership, normalized synonyms, pixel-level reveal security/timing, guessing after full reveal, retries/expiry, snapshots, missing storage, and explicit fixture review, alongside the existing foundation regressions. Frontend tests cover gameplay, refresh, recovery, completion, empty/expired rounds, stale polling, availability, routing, and CSRF transport.
+Tests use an isolated in-memory SQLite database and in-memory cache by default; never your development data. CI supplies `TEST_DATABASE_URL` and `TEST_REDIS_URL` to exercise PostgreSQL and an isolated Redis database. Backend tests additionally cover party permissions, capacity, host succession, WebSocket origin/session authorization, shared reveals, persisted cooldowns, negative scores, deadline progression, replay, and concurrent mutations. Backend tests cover guest/account gameplay, CSRF and ownership, normalized synonyms, pixel-level reveal security/timing, guessing after full reveal, retries/expiry, snapshots, missing storage, and explicit fixture review, alongside the existing foundation regressions. Frontend tests cover gameplay, refresh, recovery, completion, empty/expired rounds, stale polling, availability, routing, and CSRF transport.
 
 Upload tests use the built-in pytest `tmp_path` fixture. Pytest creates and manages temporary directories under the operating system temporary location on Windows and Linux; no custom base-temp directory or pre-existing `.pytest_cache` folder is required.
 

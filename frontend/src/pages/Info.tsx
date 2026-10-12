@@ -29,7 +29,8 @@ export function About() {
   return (
     <>
       <PageHeading eyebrow="FIND THE BIGGER PICTURE" title="A game of seeing what’s there.">
-        Pixelguessr is a curated image-guessing game. Singleplayer is ready to play.
+        Pixelguessr is a curated image-guessing game. Singleplayer and private parties are ready to
+        play.
       </PageHeading>
       <section className="panel prose">
         <h2>From pixels to perspective</h2>
@@ -40,7 +41,9 @@ export function About() {
         <h2>Play your way</h2>
         <p>
           Play <Link to="/singleplayer">singleplayer</Link> with unlimited guesses and no penalties.
-          Parties and ranked duels are coming later. <Link to="/">Explore the modes.</Link>
+          Create a <Link to="/party/new">party</Link> to play with friends. Wrong guesses cost 50
+          points and have a two-second cooldown. The host chooses the reveal duration and number of
+          rounds. Ranked duels are coming later. <Link to="/">Explore the modes.</Link>
         </p>
         <h2>A thoughtfully curated library</h2>
         <p>

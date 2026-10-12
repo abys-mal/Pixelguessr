@@ -11,6 +11,7 @@ export function Mode() {
         <Link to="/">Back to the homepage</Link>
       </PageHeading>
     );
+  if (mode.id === 'party') return <Navigate to="/party/new" replace />;
   if (mode.id === 'singleplayer') return <Navigate to="/singleplayer" replace />;
   return (
     <>

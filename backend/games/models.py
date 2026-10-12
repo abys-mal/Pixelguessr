@@ -23,6 +23,7 @@ class Match(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     elo_applied_at = models.DateTimeField(null=True, blank=True)
+    party_round_limit = models.PositiveSmallIntegerField(default=0, editable=False)
     # Legacy one-round games remain historical; new singleplayer games use five.
     singleplayer_round_limit = models.PositiveSmallIntegerField(default=1, editable=False)
     singleplayer_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
@@ -54,6 +55,7 @@ class Participant(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT
     )
     guest = models.ForeignKey(GuestIdentity, null=True, blank=True, on_delete=models.PROTECT)
+    party_member = models.ForeignKey("PartyMember", null=True, blank=True, on_delete=models.PROTECT)
     total_score = models.PositiveIntegerField(default=0)
     decisive_wins = models.PositiveSmallIntegerField(default=0)
     joined_at = models.DateTimeField(auto_now_add=True)
@@ -87,6 +89,7 @@ class Round(models.Model):
         SOLVED = "solved", "Solved"
         FORFEITED = "forfeited", "Forfeited"
         EXPIRED = "expired", "Expired"
+        COMPLETE = "complete", "Complete"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="rounds")
@@ -130,6 +133,11 @@ class RoundPlayerState(models.Model):
     score = models.IntegerField(default=0)  # Round scores may be negative.
     solved_at = models.DateTimeField(null=True, blank=True)
     cooldown_until = models.DateTimeField(null=True, blank=True)
+    incorrect_count = models.PositiveIntegerField(default=0)
+    total_before = models.PositiveIntegerField(default=0)
+    total_after = models.PositiveIntegerField(null=True, blank=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    solve_revealed_count = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -172,3 +180,83 @@ class Guess(models.Model):
                 raise ValidationError("The participant must belong to the round's match.")
             if self.round.match.mode == Match.Mode.RANKED and self.sequence != 1:
                 raise ValidationError("Ranked permits only one guess per player per round.")
+
+
+class Party(models.Model):
+    class Status(models.TextChoices):
+        LOBBY = "lobby", "Lobby"
+        PLAYING = "playing", "Playing"
+        COMPLETE = "complete", "Complete"
+        CLOSED = "closed", "Closed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=6, unique=True)
+    create_request_id = models.UUIDField(unique=True)
+    status = models.CharField(max_length=12, choices=Status, default=Status.LOBBY)
+    reveal_seconds = models.PositiveSmallIntegerField(default=30)
+    round_limit = models.PositiveSmallIntegerField(default=10)
+    host = models.ForeignKey(
+        "PartyMember", null=True, on_delete=models.SET_NULL, related_name="hosted"
+    )
+    current_match = models.ForeignKey(
+        Match, null=True, on_delete=models.SET_NULL, related_name="parties"
+    )
+    revision = models.PositiveIntegerField(default=1)
+    message = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(reveal_seconds__in=[15, 30, 45, 60]), name="party_valid_reveal"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(round_limit__in=[5, 10, 15, 20]), name="party_valid_round_limit"
+            ),
+        ]
+
+
+class PartyMember(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="members")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT
+    )
+    guest = models.ForeignKey(GuestIdentity, null=True, blank=True, on_delete=models.PROTECT)
+    display_name = models.CharField(max_length=40)
+    name_key = models.CharField(max_length=120)
+    joined_at = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField()
+    left_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(user__isnull=False, guest__isnull=True)
+                | models.Q(user__isnull=True, guest__isnull=False),
+                name="party_member_one_identity",
+            ),
+            models.UniqueConstraint(
+                fields=["party", "user"],
+                condition=models.Q(user__isnull=False),
+                name="party_member_unique_user",
+            ),
+            models.UniqueConstraint(
+                fields=["party", "guest"],
+                condition=models.Q(guest__isnull=False),
+                name="party_member_unique_guest",
+            ),
+            models.UniqueConstraint(
+                fields=["party", "name_key"],
+                condition=models.Q(left_at__isnull=True),
+                name="party_member_unique_name",
+            ),
+        ]
+
+
+class PartyCommand(models.Model):
+    request_id = models.UUIDField(primary_key=True)
+    party = models.ForeignKey(Party, on_delete=models.CASCADE)
+    member = models.ForeignKey(PartyMember, on_delete=models.CASCADE)
+    action = models.CharField(max_length=12)

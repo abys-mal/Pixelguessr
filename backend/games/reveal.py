@@ -37,8 +37,8 @@ def prepare_image(storage_name):
     return image
 
 
-def render_reveal(game_round, now):
-    count = revealed_count(game_round, now)
+def render_reveal(game_round, now, *, count=None):
+    count = revealed_count(game_round, now) if count is None else count
     image = (
         prepare_image(game_round.image_storage_name)
         if count

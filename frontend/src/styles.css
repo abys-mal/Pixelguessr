@@ -1538,3 +1538,232 @@ main {
     padding: 22px 16px;
   }
 }
+
+/* Multiplayer uses the same panels, reveal, inputs, and keyboard rings as singleplayer. */
+.party-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 0 0 32px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.party-nav a:hover {
+  color: var(--mint);
+}
+.party-entry {
+  max-width: 560px;
+  margin: 32px auto;
+}
+.party-entry h1 {
+  font-size: 32px;
+}
+.party-entry form,
+.party-lobby form {
+  display: grid;
+  gap: 20px;
+}
+.party-entry label,
+.party-settings-fields label {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+.party-entry input,
+.party-settings-fields select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: #16151f;
+  border: 1px solid #494254;
+  border-radius: 10px;
+  padding: 13px;
+  font: inherit;
+}
+.party-settings-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.party-code-input,
+.party-code {
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.party-code {
+  color: var(--mint);
+  font-size: 18px;
+  margin-left: 12px;
+}
+.party-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.party-header-actions .button {
+  padding: 12px 16px;
+  font-size: 12px;
+}
+.party-invite {
+  margin: -15px 0 28px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.party-lobby {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 24px;
+}
+.party-lobby h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 22px;
+}
+.party-lobby h2 .muted {
+  font-size: 14px;
+}
+.party-members {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+}
+.party-members li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 0;
+  border-top: 1px solid #ffffff12;
+}
+.party-members strong {
+  overflow-wrap: anywhere;
+}
+.party-members small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #767185;
+}
+.presence-dot.online {
+  background: var(--mint);
+}
+.party-host {
+  font-size: 10px;
+  color: var(--mint);
+  border: 1px solid #7ae1c244;
+  border-radius: 5px;
+  padding: 4px 7px;
+}
+.party-setting-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  font-size: 14px;
+}
+.party-setting-summary dt {
+  color: var(--muted);
+}
+.party-setting-summary dd {
+  margin: 0;
+}
+.party-rules-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin-top: 24px;
+}
+.waiting-message {
+  color: var(--mint);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.party-start-count {
+  font-size: 64px;
+  font-weight: 700;
+  color: var(--mint);
+  margin: 12px 0;
+}
+.party-earned {
+  font-size: 36px;
+  color: var(--mint);
+}
+.party-earned span {
+  font-size: 14px;
+  color: var(--muted);
+}
+.party-overall,
+.party-round-ranking {
+  margin-top: 24px;
+}
+.party-table-wrap {
+  overflow-x: auto;
+}
+.party-leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.party-leaderboard caption {
+  text-align: left;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+.party-leaderboard td,
+.party-leaderboard th {
+  padding: 14px 10px;
+  text-align: left;
+  border-bottom: 1px solid #ffffff12;
+}
+.party-leaderboard thead th {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.party-leaderboard th span {
+  overflow-wrap: anywhere;
+}
+.party-leaderboard small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.party-leaderboard .is-me {
+  background: #b8a5ff0a;
+}
+.party-winner {
+  color: var(--mint);
+  font-size: 23px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .party-lobby {
+    grid-template-columns: 1fr;
+  }
+  .party-header-actions {
+    width: 100%;
+  }
+  .party-settings-fields {
+    grid-template-columns: 1fr;
+  }
+  .party-leaderboard {
+    font-size: 12px;
+  }
+  .party-leaderboard td,
+  .party-leaderboard th {
+    padding: 12px 6px;
+  }
+  .party-members li {
+    gap: 8px;
+  }
+}

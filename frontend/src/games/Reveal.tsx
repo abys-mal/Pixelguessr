@@ -2,7 +2,10 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import type { GameRound } from './singleplayer';
 
 // The image is already masked by Django. This overlay only animates confirmed tiles.
-export function Reveal({ round }: { round: GameRound | null }) {
+type RevealRound = Pick<GameRound, 'id' | 'image_url' | 'grid_size' | 'revealed_tiles'> & {
+  completion: { answer: string } | null;
+};
+export function Reveal({ round }: { round: RevealRound | null }) {
   const [frame, setFrame] = useState<{ url: string; roundId: string; tiles: Set<number> } | null>(
     null,
   );

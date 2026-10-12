@@ -34,6 +34,8 @@ MODES = (
         incorrect_cooldown_seconds=2,
         incorrect_penalty=50,
         max_correct_score=1000,
+        available=True,
+        rounds_per_session=10,
     ),
 )
 

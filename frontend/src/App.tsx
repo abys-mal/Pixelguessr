@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { PartyEntry, PartyRoute } from './pages/Party';
 import { Home } from './pages/Home';
 import { Singleplayer } from './pages/Singleplayer';
 import { Mode } from './pages/Mode';
@@ -14,6 +15,9 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
+        <Route path="party/new" element={<PartyEntry key="create" create />} />
+        <Route path="party/join" element={<PartyEntry key="join" />} />
+        <Route path="party/:code" element={<PartyRoute />} />
         <Route path="singleplayer" element={<Singleplayer />} />
         <Route path="modes/:modeId" element={<Mode />} />
         <Route path="login" element={<AuthPage key="login" />} />

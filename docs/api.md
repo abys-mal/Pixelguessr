@@ -21,7 +21,7 @@ All paths have trailing slashes. JSON responses unless noted. Session cookies au
 | POST   | `/api/moderation/reports/`                      | Account access + CSRF; subject user UUID, category, details; 201                              |
 | GET    | `/api/moderation/sanctions/`                    | Session; own active sanctions, paginated                                                      |
 | POST   | `/api/moderation/sanctions/<uuid>/acknowledge/` | Session + CSRF; own active warning only; idempotent                                           |
-| GET    | `/api/modes/`                                   | Public intended rules; gameplay_available=true; only singleplayer available=true              |
+| GET    | `/api/modes/`                                   | Public intended rules; gameplay_available=true; singleplayer and parties available=true              |
 
 Standard paginated result: `{count, next, previous, results}` (24 per page). Validation failures are 400, denied session permissions 403, unknown objects 404, and throttled requests 429. Login failure has a generic error; production should add edge abuse controls. CSRF failure may use Django’s HTML error body; the frontend never displays raw HTML.
 
@@ -29,7 +29,7 @@ Submission fields: `canonical_answer` (120 chars), `accepted_synonyms` (JSON lis
 
 Throttle scopes: anonymous 120/hour, user 1200/hour, login/register 10/minute, image creation 20/day, reports 10/day. Scoped endpoints use their scope rather than both generic scopes. Configure trusted proxy count according to real infrastructure; the default trusts no forwarding headers. DRF cache throttles are non-atomic and provide only a baseline usage policy.
 
-Party creation/join, matchmaking, ranked guesses, and leaderboard APIs remain unavailable. The prepared multiplayer WebSocket route rejects all handshakes.
+Ranked matchmaking, ranked guesses, and public leaderboard APIs remain unavailable. Party APIs and WebSockets are implemented below; the ranked WebSocket scaffold still rejects handshakes.
 
 ## Five-round singleplayer
 
@@ -58,3 +58,27 @@ Guesses: 1–120 characters; NFKC/casefold, whitespace collapse, punctuation/sym
 Errors: 503 `library_empty` / `image_unavailable`; 409 `reveal_incomplete` before forfeit eligibility, `round_unfinished` for skipping, `round_not_current` / `round_not_started` for future rounds, `session_in_progress` for starting over while unfinished; 410 `round_expired` for expired/abandoned actions/images. Legacy one-round game mutations return 410 `legacy_session`; current-game recovery excludes legacy records. Account-owned active games can recover even when the browser lacks a round pointer; guests require their identity cookie.
 
 Scoped baseline abuse limits remain CSRF 600/minute, starts/advances 30/minute, state/image reads 600/minute, and guesses/forfeits 600/minute. No per-round guess cap, incorrect penalty or gameplay cooldown is introduced.
+
+## Multiplayer parties
+
+All mutations require cookie-session CSRF, including guests. Member reads/actions/images are private/no-store and vary by Cookie. Codes are case-insensitive. Accounts use their server display name; guests supply `display_name` (2–24 letters/numbers/spaces/simple punctuation). Unknown/foreign membership is 404; closed/expired parties are 410; host violations are 403; gameplay conflicts are 409; active wrong-guess cooldown returns 429. No client identity, score, start time, or reveal count is trusted.
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| POST | `/api/parties/` | `{request_id: UUID, display_name?: string, reveal_seconds?: 30, round_limit?: 10}` → 201 personalized state |
+| GET | `/api/parties/<code>/` | Member state; refreshes presence as HTTP fallback |
+| POST | `/api/parties/<code>/join/` | `{display_name?: string}` → member state; duplicate identity resumes |
+| PATCH | `/api/parties/<code>/` | Host lobby settings: `reveal_seconds` (15/30/45/60), `round_limit` (5/10/15/20); extra fields rejected |
+| POST | `/api/parties/<code>/start/` | Host + `{request_id: UUID}`; minimum two members |
+| POST | `/api/parties/<code>/leave/` | Leaves, transfers host if needed; 204 |
+| POST | `/api/parties/<code>/lobby/` | `{request_id: UUID}`; any member after final results may return everyone to lobby |
+| POST | `/api/parties/<code>/guesses/` | `{round_id: UUID, guess: string, request_id: UUID}` → `{state, result}` |
+| GET | `/api/parties/<code>/rounds/<uuid>/image/` | Authorized current masked WebP; client query parameters cannot advance reveal |
+
+State contains `code`, `status` (lobby/playing/complete), `revision`, `server_now`, `expires_at`, `host_id`, `me_id`, two `settings`, active `members`, `match_id`, current `round`, `leaderboard`, `winners`, `message`, and fixed `rules`. It never exposes future round IDs/images, synonyms, original URLs, private filenames, or raw guesses.
+
+Current round includes server start/deadline/next-transition timestamps, reveal size/count/prefix, private image endpoint, and private `me` solve/score/guess/cooldown state. `completion` remains null for everyone, including solved players, until round end; then it contains canonical answer and curated attribution/license/category. Leaderboard rows contain member ID/name, stored round/total score, solved/connected/left flags, round rank, and solved-round count. See [party rules and tie-breaking](parties.md).
+
+`/ws/parties/<code>/` uses the same cookie identity and validates trusted origins before accepting. The server sends `{type: "state", state: ...}` initially and as state changes, with one-second reconciliation. Send `{type: "heartbeat"}` every five seconds. Guesses use `{type: "guess", round_id, guess, request_id}` and receive `{type: "guess_result", request_id, result, state}`; errors contain `type: "error"`, request ID where present, detail, code, and status. Lost acknowledgments may be retried over HTTP with the same UUID without repeating score effects. Unauthorized/session-revoked connections close with 4403; oversized frames close with 1009. Essential state survives connection/server/cache loss.
+
+Party errors include `party_full`, `name_taken`, `match_started`, `settings_locked`, `not_enough_players`, `host_only`, `round_not_current`, `round_not_started`, `round_ended`, `already_solved`, `guess_cooldown`, `request_conflict`, and `party_closed`. Empty/unavailable curated libraries use the existing 503 game errors. Rejected deadline guesses still persist the deadline transition. No fuzzy matching or category selection is implemented.

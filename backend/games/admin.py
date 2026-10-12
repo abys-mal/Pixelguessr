@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import Guess, GuestIdentity, Match, Participant, Round, RoundPlayerState
+from .models import (
+    Guess,
+    GuestIdentity,
+    Match,
+    Participant,
+    Party,
+    PartyCommand,
+    PartyMember,
+    Round,
+    RoundPlayerState,
+)
 
 
 class ScaffoldAdmin(admin.ModelAdmin):
@@ -14,5 +24,15 @@ class ScaffoldAdmin(admin.ModelAdmin):
         return False
 
 
-for model in (Match, GuestIdentity, Participant, Round, RoundPlayerState, Guess):
+for model in (
+    Match,
+    GuestIdentity,
+    Participant,
+    Round,
+    RoundPlayerState,
+    Guess,
+    Party,
+    PartyMember,
+    PartyCommand,
+):
     admin.site.register(model, ScaffoldAdmin)

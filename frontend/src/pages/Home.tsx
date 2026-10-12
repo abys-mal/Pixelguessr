@@ -73,8 +73,8 @@ export function Home() {
                 <span className="mode-icon" aria-hidden="true">
                   {mode.icon}
                 </span>
-                <Badge tone={mode.id === 'singleplayer' ? 'mint' : ''}>
-                  {mode.id === 'singleplayer' ? 'Playable' : 'Coming later'}
+                <Badge tone={mode.id !== 'ranked' ? 'mint' : ''}>
+                  {mode.id !== 'ranked' ? 'Playable' : 'Coming later'}
                 </Badge>
               </div>
               <p className="eyebrow">{mode.eyebrow}</p>
@@ -83,9 +83,19 @@ export function Home() {
               <p className="card-meta">{mode.meta}</p>
               <Link
                 className="mode-link"
-                to={mode.id === 'singleplayer' ? '/singleplayer' : `/modes/${mode.id}`}
+                to={
+                  mode.id === 'singleplayer'
+                    ? '/singleplayer'
+                    : mode.id === 'party'
+                      ? '/party/new'
+                      : `/modes/${mode.id}`
+                }
               >
-                {mode.id === 'singleplayer' ? 'Play singleplayer' : 'Explore mode'}{' '}
+                {mode.id === 'singleplayer'
+                  ? 'Play singleplayer'
+                  : mode.id === 'party'
+                    ? 'Create Party'
+                    : 'Explore mode'}{' '}
                 <span aria-hidden="true">↗</span>
               </Link>
               <span className="card-number" aria-hidden="true">

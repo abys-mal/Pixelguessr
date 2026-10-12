@@ -1,11 +1,11 @@
 # Architecture
 
-One Django application and one React application. Local Phase 2.1 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. No microservices or background worker are needed.
+One Django application and one React application. Local Phase 3 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. A lightweight `party_clock` management process advances unattended parties; no external task queue is needed.
 
 ```text
 Browser → Vite development proxy / production edge → Django ASGI
                                                     ├─ HTTP /api + /admin
-                                                    ├─ Channels routing (currently rejects matches)
+                                                    ├─ Channels party sockets + deferred ranked routing
                                                     ├─ SQLite / PostgreSQL: durable domain data
                                                     ├─ In-memory / Redis: cache/throttles + channel layer
                                                     └─ Private filesystem / S3: normalized uploads
@@ -18,7 +18,7 @@ Browser → Vite development proxy / production edge → Django ASGI
 | accounts    | Custom users, public/private serializers, sessions, account permissions, verified titles                                           |
 | library     | Category and submission persistence, validated upload pipeline, private references, staff review                                   |
 | moderation  | Reports, audited sanctions, active restriction policy, warning acknowledgment                                                      |
-| games       | Authoritative singleplayer services, normalized guesses, private reveal compositor, mode availability, future multiplayer scaffold |
+| games       | Authoritative singleplayer services, normalized guesses, private reveal compositor, mode availability, durable real-time party services |
 | core        | Minimal liveness and database/cache readiness                                                                                      |
 | config      | Settings, environment, URL/ASGI wiring                                                                                             |
 
@@ -32,11 +32,11 @@ Submissions require exactly one image reference. Uploaded filenames are opaque, 
 
 GuestIdentity is bound to the Django server session, with a seven-day identity/session lifetime. Every round read, image request, and guess checks session ownership; UUID knowledge alone grants no access. Accounts own their participant directly, and can also finish a guest round started in the same session. Clearing or losing cookies loses guest access. Never accept client-provided user/guest IDs as authentication.
 
-Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked mode’s one-guess limit and membership checks are represented in model `clean()`; Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Ranked/party constraints remain scaffolds.
+Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked mode’s one-guess limit and membership checks are represented in model `clean()`; Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Party services validate membership and cooldowns under the same first-write locking pattern; ranked remains deferred.
 
 Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, but acknowledgment lifts the warning gate. Probation disables submissions and will disable ranked when matchmaking exists. Suspension/closure deny authentication and retrieval of existing session users via the custom auth backend. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
 
-## Future multiplayer implementation contract
+## Shared multiplayer implementation contract
 
 - The server creates a private reveal order and authoritative start/deadline. It controls randomness, reveal progress, correctness, cooldowns, scores, spectators, wins, and final Elo.
 - Publish only opaque image-delivery tokens, revealed tile coordinates, public participant summaries, authoritative deadlines, and game state. Do not send canonical answers, synonyms, private storage references, or revealing attribution/provenance until an intentional post-round disclosure.
@@ -45,7 +45,7 @@ Moderation checks start times, expiry, and audited revocation. Warnings remain a
 - Singleplayer: five rounds, 45-second reveal, up to 1,000 points per round, no incorrect penalty/cooldown, forfeit only after full reveal.
 - Parties: unlimited guesses, incorrect penalty 50 and cooldown 2 seconds, up to 1,000 points based on reveal progress. Signed round score, cumulative floor zero, solved players spectate, everyone solved ends early.
 - Ranked: accounts only, matchmaking only, one guess each, wrong guess immediately loses, first correct wins, no winner replays, first four decisive wins ends the match. No tier thresholds have been selected.
-- Authentication of Channels sessions and origin checking are wired; implement object-level authorization, reconnect state, message validation, and distributed timing before accepting any game socket.
+- Party sockets validate origins, reload cookie-session identity, enforce membership on every action, and reconstruct state from the database. Ranked sockets remain unavailable.
 
 ## Verification scope
 
@@ -72,3 +72,13 @@ Ownership reads occur before opening mutation transactions. The first operation 
 Current reads restore the latest started round rather than trusting an old browser pointer. Account-owned active sessions can recover on another authenticated browser; guest recovery requires session cookies. React provides explicit round results and Next Round, followed by a dedicated final table and Play Again. Timer values are cosmetic; neither score nor forfeit eligibility is determined by the browser clock.
 
 Tests use in-memory SQLite by default, plus an optional isolated file database for actual simultaneous-request tests. Historical migration compatibility is tested by applying the old schema and upgrading again inside a disposable database. No production/development data is used in automated tests.
+
+## Multiplayer parties
+
+`games/parties.py` owns party membership, host succession, synchronized round transitions, scoring, and safe personalized snapshots. `party_views.py` provides CSRF-protected HTTP actions and secure images; `party_consumer.py` delivers authenticated WebSocket snapshots and guess acknowledgments. Channels only carries invalidations, never shared private answers or essential state. `party_clock` reconciles unattended deadlines.
+
+Party, PartyMember, and PartyCommand persist invites, membership, configuration, presence leases, and idempotent match/lobby commands. Existing Match/Participant/Round/RoundPlayerState/Guess models hold gameplay. The additive games migration 0005 retains historical singleplayer data. Round scoring reuses the integer reveal formula and private compositor; a server-only compositor count permits full images after early completion.
+
+React `useParty` reconciles revisions and authoritative timestamps, reconnects WebSockets, and falls back to HTTP using the same guess request UUID after a lost acknowledgment. Guess inputs mount with focus on each new active round; programmatic result-heading focus uses the existing scoped focus style. Genuine keyboard focus remains visible.
+
+See [party operations, timing, tie-breaking, security, and manual verification](parties.md).
