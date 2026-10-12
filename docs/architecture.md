@@ -5,7 +5,7 @@ One Django application and one React application. Local Phase 3 uses SQLite, in-
 ```text
 Browser → Vite development proxy / production edge → Django ASGI
                                                     ├─ HTTP /api + /admin
-                                                    ├─ Channels party sockets + deferred ranked routing
+                                                    ├─ Channels party sockets + ranked participant sockets
                                                     ├─ SQLite / PostgreSQL: durable domain data
                                                     ├─ In-memory / Redis: cache/throttles + channel layer
                                                     └─ Private filesystem / S3: normalized uploads
@@ -32,9 +32,9 @@ Submissions require exactly one image reference. Uploaded filenames are opaque, 
 
 GuestIdentity is bound to the Django server session, with a seven-day identity/session lifetime. Every round read, image request, and guess checks session ownership; UUID knowledge alone grants no access. Accounts own their participant directly, and can also finish a guest round started in the same session. Clearing or losing cookies loses guest access. Never accept client-provided user/guest IDs as authentication.
 
-Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked mode’s one-guess limit and membership checks are represented in model `clean()`; Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Party services validate membership and cooldowns under the same first-write locking pattern; ranked remains deferred.
+Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked services enforce registered membership and the one-guess limit under the durable writer gate; foundation model `clean()` also describes identity constraints. Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Party services validate membership and cooldowns under the same first-write locking pattern; ranked services acquire a durable singleton writer gate before mutable reads, making queue pairing, winner selection and Elo application atomic across workers.
 
-Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, but acknowledgment lifts the warning gate. Probation disables submissions and will disable ranked when matchmaking exists. Suspension/closure deny authentication and retrieval of existing session users via the custom auth backend. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
+Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, but acknowledgment lifts the warning gate. Probation disables submissions and disables ranked. Suspension/closure deny authentication and retrieval of existing session users via the custom auth backend. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
 
 ## Shared multiplayer implementation contract
 
@@ -44,8 +44,8 @@ Moderation checks start times, expiry, and audited revocation. Warnings remain a
 - Validate account restrictions, match membership, round state, and guess limits inside atomic services. Use row locks/idempotency to decide concurrent guesses and apply Elo once after match completion. Redis is transient transport; PostgreSQL is the durable source of truth.
 - Singleplayer: five rounds, 45-second reveal, up to 1,000 points per round, no incorrect penalty/cooldown, forfeit only after full reveal.
 - Parties: unlimited guesses, incorrect penalty 50 and cooldown 2 seconds, up to 1,000 points based on reveal progress. Signed round score, cumulative floor zero, solved players spectate, everyone solved ends early.
-- Ranked: accounts only, matchmaking only, one guess each, wrong guess immediately loses, first correct wins, no winner replays, first four decisive wins ends the match. No tier thresholds have been selected.
-- Party sockets validate origins, reload cookie-session identity, enforce membership on every action, and reconstruct state from the database. Ranked sockets remain unavailable.
+- Ranked: accounts only, matchmaking only, one guess each, wrong guess consumes the guess without an automatic loss, first correct wins, both wrong or deadline Wash, first four decisive wins ends the match. See ranked.md for Elo, tiers and disconnect policy.
+- Party sockets validate origins, reload cookie-session identity, enforce membership on every action, and reconstruct state from the database. Ranked sockets reload authentication and membership on every action and persist connection leases, allowing atomic reconnect/forfeit/No Contest decisions.
 
 ## Verification scope
 

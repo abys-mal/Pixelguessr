@@ -33,7 +33,11 @@ def test_guest_identity_constraints(user):
 def test_singleplayer_and_parties_are_available(client):
     body = client.get("/api/modes/").json()
     assert body["gameplay_available"] is True
-    assert {mode["id"] for mode in body["modes"] if mode["available"]} == {"singleplayer", "party"}
+    assert {mode["id"] for mode in body["modes"] if mode["available"]} == {
+        "singleplayer",
+        "party",
+        "ranked",
+    }
     assert {mode["id"] for mode in body["modes"]} == {"ranked", "singleplayer", "party"}
 
 

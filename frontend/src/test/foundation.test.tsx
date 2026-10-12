@@ -28,18 +28,21 @@ describe('Established experience', () => {
     page();
     for (const mode of ['Ranked Duel', 'Singleplayer', 'Parties'])
       expect(screen.getByRole('heading', { name: mode })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: /Explore mode/ })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Play Ranked Duel/ })).toHaveAttribute(
+      'href',
+      '/ranked',
+    );
     expect(screen.getByRole('link', { name: /Play singleplayer/ })).toHaveAttribute(
       'href',
       '/singleplayer',
     );
-    expect(screen.getAllByText('Coming later')).toHaveLength(1);
+    expect(screen.queryByText('Coming later')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^play$/i })).not.toBeInTheDocument();
   });
-  it('makes unavailable gameplay explicitly disabled', () => {
+  it('requires a registered session for ranked gameplay', () => {
     page('/modes/ranked');
-    expect(screen.getByRole('button', { name: 'Gameplay is not available yet' })).toBeDisabled();
-    expect(screen.getByText(/One guess per player/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Make yourself at home' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Find opponent' })).not.toBeInTheDocument();
   });
   it('requires a session for image submission', () => {
     page('/submit');

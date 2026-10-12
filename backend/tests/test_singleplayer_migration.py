@@ -11,7 +11,10 @@ from django.utils import timezone
 def test_legacy_games_are_preserved_by_additive_migration():
     executor = MigrationExecutor(connection)
     latest = executor.loader.graph.leaf_nodes()
-    previous = [("games", "0002_guess_request_id_round_answer_snapshot_and_more")]
+    previous = [
+        ("games", "0002_guess_request_id_round_answer_snapshot_and_more"),
+        ("accounts", "0001_initial"),
+    ]
     try:
         executor.migrate(previous)
         apps = executor.loader.project_state(previous).apps

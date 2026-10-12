@@ -3,7 +3,11 @@ export interface User {
   username: string;
   email: string;
   display_name: string;
-  ranked_tier: string;
+  ranked_tier: string | null;
+  rating: number;
+  ranked_matches: number;
+  ranked_wins: number;
+  ranked_losses: number;
   title: string | null;
   date_joined: string;
 }

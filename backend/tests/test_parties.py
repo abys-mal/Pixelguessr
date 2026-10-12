@@ -957,3 +957,12 @@ def test_expiring_third_player_leaves_solved_spectators_eligible(client, images,
     result = state(client, code)
     assert result["status"] == "playing" and result["round"]["status"] == "results"
     assert len(result["members"]) == 2
+
+
+def test_registered_party_creation_uses_cookie_session_identity(client, user):
+    client.force_login(user, backend="accounts.backends.AccountBackend")
+    response = create(client)
+    assert response.status_code == 201
+    party = Party.objects.get(code=response.json()["code"])
+    assert party.host.user_id == user.pk
+    assert party.host.guest_id is None

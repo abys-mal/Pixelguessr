@@ -24,6 +24,16 @@ class Match(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     elo_applied_at = models.DateTimeField(null=True, blank=True)
+    ranked_revision = models.PositiveIntegerField(default=0)
+    ranked_winner = models.ForeignKey(
+        "Participant",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="ranked_victories",
+    )
+    ranked_outcome = models.CharField(max_length=16, blank=True)
+    ranked_message = models.CharField(max_length=240, blank=True)
     party_round_limit = models.PositiveSmallIntegerField(default=0, editable=False)
     party_abort_reason = models.CharField(max_length=24, blank=True, editable=False)
     # Legacy one-round games remain historical; new singleplayer games use five.
@@ -60,6 +70,12 @@ class Participant(models.Model):
     party_member = models.ForeignKey("PartyMember", null=True, blank=True, on_delete=models.PROTECT)
     total_score = models.PositiveIntegerField(default=0)
     decisive_wins = models.PositiveSmallIntegerField(default=0)
+    rating_before = models.PositiveIntegerField(null=True, blank=True)
+    rating_after = models.PositiveIntegerField(null=True, blank=True)
+    rating_delta = models.IntegerField(null=True, blank=True)
+    rated_matches_before = models.PositiveIntegerField(null=True, blank=True)
+    ranked_last_seen = models.DateTimeField(null=True, blank=True)
+    ranked_disconnected_at = models.DateTimeField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -132,6 +148,8 @@ class Round(models.Model):
 class RoundPlayerState(models.Model):
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="player_states")
     participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
+    ranked_guessed_at = models.DateTimeField(null=True, blank=True)
+    ranked_request_id = models.UUIDField(null=True, blank=True, unique=True)
     score = models.IntegerField(default=0)  # Round scores may be negative.
     solved_at = models.DateTimeField(null=True, blank=True)
     cooldown_until = models.DateTimeField(null=True, blank=True)
@@ -270,3 +288,40 @@ class PartyCommand(models.Model):
         PartyMember, null=True, blank=True, on_delete=models.PROTECT, related_name="removals"
     )
     prevent_rejoin = models.BooleanField(default=False)
+
+
+class RankedGate(models.Model):
+    # One persistent writer gate, shared by every process and ranked mutation.
+    revision = models.PositiveBigIntegerField(default=0)
+
+
+class RankedQueue(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, primary_key=True, on_delete=models.CASCADE
+    )
+    ticket = models.UUIDField(null=True, blank=True, unique=True)
+    queued_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    rating_snapshot = models.PositiveIntegerField(default=1000)
+    match = models.ForeignKey(Match, null=True, blank=True, on_delete=models.PROTECT)
+
+
+class RankedConnection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    match = models.ForeignKey(Match, null=True, blank=True, on_delete=models.CASCADE)
+    queue_ticket = models.UUIDField(null=True, blank=True)
+    last_seen = models.DateTimeField(db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["match", "user"]),
+            models.Index(fields=["queue_ticket", "user"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(match__isnull=False, queue_ticket__isnull=True)
+                | models.Q(match__isnull=True, queue_ticket__isnull=False),
+                name="ranked_connection_one_scope",
+            )
+        ]

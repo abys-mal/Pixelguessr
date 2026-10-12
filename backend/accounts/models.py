@@ -4,6 +4,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Lower
 
+from games.ranked_rules import starting_rating
+
 
 class User(AbstractUser):
     class Tier(models.TextChoices):
@@ -16,8 +18,11 @@ class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=40, blank=True)
-    # Initial rating is provisional. No tier thresholds or Elo calculation in Phase 1.
-    rating = models.PositiveIntegerField(default=1000)
+    rating = models.PositiveIntegerField(default=starting_rating, db_index=True)
+    ranked_matches = models.PositiveIntegerField(default=0)
+    ranked_wins = models.PositiveIntegerField(default=0)
+    ranked_losses = models.PositiveIntegerField(default=0)
+    # Legacy column retained for compatibility; API tiers are derived from rating.
     ranked_tier = models.CharField(max_length=12, choices=Tier, default=Tier.UNRANKED)
 
     class Meta:

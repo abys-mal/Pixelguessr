@@ -170,3 +170,6 @@ if SINGLEPLAYER_ROUND_TTL_SECONDS <= SINGLEPLAYER_REVEAL_SECONDS:
     raise ImproperlyConfigured("Singleplayer expiry must be longer than the reveal.")
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     DATABASES["default"]["OPTIONS"] = {"timeout": 20}
+
+# Ranked defaults are centralized in games/ranked_rules.py. Optional JSON overrides.
+RANKED_CONFIG = env.json("RANKED_CONFIG", default={})

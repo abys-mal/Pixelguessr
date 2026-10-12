@@ -1,8 +1,10 @@
-# Pixelguessr · Phase 3.1
+# Pixelguessr · Phase 4
 
-A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 3.1 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
+A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 4 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
 
 ## Implemented
+
+- Ranked Duel at `/ranked`: registered-only rating-based matchmaking, synchronized versus countdown, one guess per 45-second image, unlimited washes, first to four decisive wins, atomic Elo and final snapshots. Durable 30-second reconnect grace, immediate leave forfeits, coincidence-window No Contests, public profiles/history and paginated standings. See [rules, startup, configuration and two-account playtesting](docs/ranked.md).
 
 - Real-time guest/account parties: six-character invites, up to 12 players, host-only 15/30/45/60-second reveals and 5/10/15/20-round matches. Shared countdowns, masked images, compact solved-player status during gameplay, full intermission/final standings, spectator states, automatic results/round transitions, and return-to-lobby replay. Host removal includes an accessible confirmation and optional party-specific identity ban. Guests receive automatic persistent party names. Brief disconnects retain membership for a 15-second presence lease; host departures close the lobby or abort the match, and fewer than two remaining players abort an active match. There is no host succession. Incorrect guesses cost 50 points with a server-enforced two-second cooldown. See [party operation and two-session test plan](docs/parties.md).
 
@@ -11,19 +13,19 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 - Forfeit becomes available only after full reveal and awards zero points. Round results show the answer, outcome, points, and total; Next Round waits for the player. Round 5 opens Final Results with all scores/outcomes, solved count, Play Again, and Return Home.
 - Four original CC0 illustrations, imported pending and explicitly reviewed only with `seed_dev_images --approve`. See [development image attribution](docs/development-images.md).
 
-- Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. Singleplayer and Parties open playable games; Ranked remains explicitly unavailable.
+- Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. All three modes open playable games. Ranked Duel requires a registered account.
 - Custom UUID user model from the first migration; password validation; registration, login, logout, profile reads, and display-name edits. Same-origin cookie sessions with CSRF protection, including anonymous login and registration.
 - Private curated image submissions by registered users: canonical answer, synonyms, category, source, license, attribution, external HTTPS references or validated uploads. Six initial categories are installed by migration. All submissions begin pending. Users can see only their own submissions.
 - Still JPEG/PNG/WebP validation (8 MB, 64–4096 px, 12 MP), re-encoding to WebP, stripped metadata, opaque UUID filenames, private local or S3-compatible storage, and an authenticated staff-only preview. The server never fetches a submitted URL.
-- Django Admin review/approval/rejection, reports, sanctions, and staff-verified Pro/Master/Legend titles. Warning acknowledgment works in account settings. Warnings expire after 90 days. Probation blocks submissions. Suspension/closure invalidate existing sessions, including staff sessions. Only superusers can reverse closure through Admin.
+- Django Admin review/approval/rejection, reports, sanctions, and staff-verified Pro/Master/Legend titles. Warning acknowledgment works in account settings. Warnings expire after 90 days. Probation blocks ranked entry and submissions. Suspension/closure invalidate existing sessions, including staff sessions. Only superusers can reverse closure through Admin.
 - Answer-safe public catalog metadata, mode rules API, liveness/readiness, database migrations, dependency locks, formatting/linting, regression tests, and CI with PostgreSQL and Redis.
 
-## Scaffolded and deferred
+## Ranked and deferred work
 
-- Ranked matchmaking, first-to-four duels, and idempotent Elo updates remain deferred. Guests remain separate from user accounts.
-- ASGI and Channels/Redis routing. `/ws/parties/<code>/` provides real party sessions; `/ws/matches/<uuid>/` remains a rejecting ranked scaffold. `/api/modes/` reports singleplayer and parties available.
-- Profile and leaderboard shells. There are no match statistics or ranked standings. Ranked tiers exist without Elo thresholds. Initial rating 1000 is a provisional storage default, not a finalized policy.
-- Future phases: ranked matchmaking and first-to-four duels, match history, and public leaderboards.
+- Registered-only ranked matchmaking, first-to-four decisive wins, atomic Elo, public profiles, history and paginated standings are implemented. See [ranked operation and playtest checklist](docs/ranked.md). Guests remain separate from user accounts.
+- ASGI and Channels/Redis routing. `/ws/parties/<code>/` provides real party sessions; `/ws/matches/<uuid>/` provides private ranked sessions, with `/ws/ranked/queue/<ticket>/` for matchmaking. `/api/modes/` reports all three modes available.
+- Public Elo, derived tiers, wins/losses/rated counts and completed ranked history. Leaderboards require at least one rated match; No Contests do not qualify.
+- Future phases: production load testing and operations, matchmaking throughput and image-compositor optimization.
 - Later account work: email verification, email/password changes and recovery, full appeals, and operational production deployment. No party chat is planned for V1.
 
 ## Start locally without Docker
@@ -63,6 +65,13 @@ Open http://localhost:5173. Vite proxies `/api` and `/ws` to Django; this preser
 Existing `.venv`, `.env`, and `frontend/node_modules` are already prepared in this local checkout; installation commands are needed only for a fresh setup.
 
 The lightweight mode is explicitly development-only: `DEBUG=True`, `USE_SQLITE=True`, `LOCAL_SERVICES=True`. The environment helper preserves an existing `.env`; edit those flags yourself if switching modes. To use real services locally, start `docker compose up -d db redis`, set both fallback flags to `False`, and keep the default localhost database/Redis URLs. SQLite and PostgreSQL are separate databases; switching does not copy data. On macOS/Linux use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.
+
+Run a fourth terminal for durable ranked deadlines (in addition to the existing party clock):
+
+```powershell
+cd "C:/Users/actian/python code/Pixelguessr/backend"
+..\.venv\Scripts\python.exe manage.py ranked_clock
+```
 
 ## Local checks
 

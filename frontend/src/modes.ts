@@ -9,8 +9,8 @@ export const modes = [
     meta: 'Account required · First to 4 wins',
     rules: [
       'Registered accounts only. Ranked matchmaking only.',
-      'One guess per player per round. An incorrect guess immediately loses the round.',
-      'The first correct guess wins. Rounds without a winner are replayed.',
+      'One guess per player per round. An incorrect guess uses your guess; it does not award a win.',
+      'The first correct guess wins. Both wrong or 45 seconds without a correct guess: Wash.',
       'First to four decisive round wins. Elo changes once, after the match.',
     ],
   },

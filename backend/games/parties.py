@@ -193,7 +193,7 @@ def create_party(request, data):
     identity = create_identity(request, now)
     with transaction.atomic():
         owner = next(iter(identity.values()))
-        type(owner).objects.filter(pk=owner.pk).update(display_name=F("display_name"))
+        owner._meta.model.objects.filter(pk=owner.pk).update(display_name=F("display_name"))
         existing = Party.objects.filter(create_request_id=data["request_id"]).first()
         if existing:
             member_for(existing, request)

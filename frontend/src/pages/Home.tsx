@@ -73,9 +73,7 @@ export function Home() {
                 <span className="mode-icon" aria-hidden="true">
                   {mode.icon}
                 </span>
-                <Badge tone={mode.id !== 'ranked' ? 'mint' : ''}>
-                  {mode.id !== 'ranked' ? 'Playable' : 'Coming later'}
-                </Badge>
+                <Badge tone="mint">Playable</Badge>
               </div>
               <p className="eyebrow">{mode.eyebrow}</p>
               <h3>{mode.label}</h3>
@@ -88,14 +86,14 @@ export function Home() {
                     ? '/singleplayer'
                     : mode.id === 'party'
                       ? '/party/new'
-                      : `/modes/${mode.id}`
+                      : '/ranked'
                 }
               >
                 {mode.id === 'singleplayer'
                   ? 'Play singleplayer'
                   : mode.id === 'party'
                     ? 'Create Party'
-                    : 'Explore mode'}{' '}
+                    : 'Play Ranked Duel'}{' '}
                 <span aria-hidden="true">↗</span>
               </Link>
               <span className="card-number" aria-hidden="true">

@@ -97,7 +97,9 @@ def test_weak_password_rejected(client):
 
 def test_public_profile_no_email(client, user):
     body = client.get(f"/api/auth/profiles/{user.username}/").json()
-    assert "email" not in body and "password" not in body and "rating" not in body
+    assert "email" not in body and "password" not in body
+    assert body["rating"] == 1000
+    assert body["ranked_tier"] is None
 
 
 def test_auth_throttle(client):

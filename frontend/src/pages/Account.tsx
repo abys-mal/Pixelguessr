@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { RankedProfile } from './RankedPublic';
 import { api } from '../api';
 import type { Page } from '../api';
 import { useAuth } from '../auth/context';
@@ -16,36 +17,12 @@ interface Notice {
 
 export function Profile() {
   const { user, loading } = useAuth();
+  const { username } = useParams();
+  if (username)
+    return <RankedProfile key={username} username={username} own={user?.username === username} />;
   if (loading) return <StatusMessage>Loading profile…</StatusMessage>;
   if (!user) return <SignInPrompt feature="view your profile" />;
-  return (
-    <>
-      <PageHeading eyebrow="YOUR CORNER OF THE GRID" title={user.display_name || user.username}>
-        @{user.username}
-      </PageHeading>
-      <section className="panel profile-panel">
-        <div className="avatar" aria-hidden="true">
-          {(user.display_name || user.username).slice(0, 1).toUpperCase()}
-        </div>
-        <div>
-          <Badge tone="violet">{user.ranked_tier}</Badge>
-          {user.title && <Badge tone="mint">{user.title}</Badge>}
-          <h2>A fresh perspective.</h2>
-          <p className="muted">
-            Member since{' '}
-            {new Date(user.date_joined).toLocaleDateString(undefined, {
-              month: 'long',
-              year: 'numeric',
-            })}
-            . Ranked results and match history will arrive with gameplay.
-          </p>
-          <Link className="button secondary" to="/settings">
-            Account settings ↗
-          </Link>
-        </div>
-      </section>
-    </>
-  );
+  return <RankedProfile key={user.username} username={user.username} own />;
 }
 
 export function Settings() {

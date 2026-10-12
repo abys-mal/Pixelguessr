@@ -1844,3 +1844,107 @@ main {
   font-size: 14px;
   margin: 24px 0;
 }
+
+/* Ranked duel: reuse existing panels, forms, reveal and accessible focus styles. */
+.ranked-queue {
+  max-width: 650px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 40px;
+}
+.ranked-emblem {
+  font-size: 70px;
+  color: var(--violet, #b8a7ff);
+}
+.ranked-timer {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 12px 0;
+}
+.duel-scoreboard {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 36px;
+  padding: 22px 32px;
+}
+.duel-player {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.duel-player:last-of-type {
+  text-align: right;
+}
+.duel-player > a {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.duel-player strong {
+  font-size: 2.5rem;
+}
+.duel-vs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #b8a7ff;
+  font-weight: 800;
+}
+.ranked-play-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 24px;
+  margin: 20px 0;
+}
+.ranked-controls {
+  align-self: start;
+}
+.duel-countdown,
+.duel-final {
+  text-align: center;
+  padding: 36px;
+}
+.duel-ratings {
+  display: flex;
+  justify-content: space-around;
+  gap: 24px;
+  margin: 24px 0;
+}
+.ranked-table {
+  overflow-x: auto;
+  margin: 24px 0;
+}
+.ranked-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.ranked-table th,
+.ranked-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid #ffffff15;
+}
+@media (max-width: 700px) {
+  .duel-player > a {
+    font-size: 1rem;
+  }
+  .ranked-play-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .ranked-queue,
+  .duel-countdown,
+  .duel-final {
+    padding: 24px 18px;
+  }
+  .duel-scoreboard {
+    padding: 18px;
+  }
+  .duel-ratings {
+    flex-direction: column;
+  }
+}

@@ -2,15 +2,33 @@ from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from games.ranked_rules import tier
+
 from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
+    ranked_tier = serializers.SerializerMethodField()
+
+    def get_ranked_tier(self, obj):
+        return tier(obj.rating)
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "display_name", "ranked_tier", "title", "date_joined"]
+        fields = [
+            "id",
+            "username",
+            "email",
+            "display_name",
+            "ranked_tier",
+            "rating",
+            "ranked_matches",
+            "ranked_wins",
+            "ranked_losses",
+            "title",
+            "date_joined",
+        ]
         read_only_fields = fields
 
     def get_title(self, obj):
@@ -20,7 +38,18 @@ class UserSerializer(serializers.ModelSerializer):
 
 class PublicProfileSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
-        fields = ["id", "username", "display_name", "ranked_tier", "title", "date_joined"]
+        fields = [
+            "id",
+            "username",
+            "display_name",
+            "ranked_tier",
+            "rating",
+            "ranked_matches",
+            "ranked_wins",
+            "ranked_losses",
+            "title",
+            "date_joined",
+        ]
         read_only_fields = fields
 
 

@@ -1,9 +1,10 @@
 from django.urls import path
 
-from .consumers import UnavailableMatchConsumer
 from .party_consumer import PartyConsumer
+from .ranked_consumer import RankedConsumer
 
 websocket_urlpatterns = [
+    path("ws/ranked/queue/<uuid:ticket>/", RankedConsumer.as_asgi()),
     path("ws/parties/<str:code>/", PartyConsumer.as_asgi()),
-    path("ws/matches/<uuid:match_id>/", UnavailableMatchConsumer.as_asgi()),
+    path("ws/matches/<uuid:match_id>/", RankedConsumer.as_asgi()),
 ]

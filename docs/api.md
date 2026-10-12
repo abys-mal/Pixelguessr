@@ -29,7 +29,19 @@ Submission fields: `canonical_answer` (120 chars), `accepted_synonyms` (JSON lis
 
 Throttle scopes: anonymous 120/hour, user 1200/hour, login/register 10/minute, image creation 20/day, reports 10/day. Scoped endpoints use their scope rather than both generic scopes. Configure trusted proxy count according to real infrastructure; the default trusts no forwarding headers. DRF cache throttles are non-atomic and provide only a baseline usage policy.
 
-Ranked matchmaking, ranked guesses, and public leaderboard APIs remain unavailable. Party APIs and WebSockets are implemented below; the ranked WebSocket scaffold still rejects handshakes.
+Ranked is available for registered accounts. See [ranked rules and operation](ranked.md).
+
+- `GET/POST /api/ranked/queue/`: recover search or enter with `{request_id: UUID}`.
+- `POST /api/ranked/queue/cancel/`: cancel the current request UUID; returns an already-paired match if pairing won the race.
+- `GET /api/ranked/matches/<uuid>/`: private participant state.
+- `POST /api/ranked/matches/<uuid>/guesses/`: `{round_id, guess, request_id}`; one guess per participant/round.
+- `POST /api/ranked/matches/<uuid>/leave/`: immediate rated forfeit, idempotent after completion.
+- `GET /api/ranked/matches/<uuid>/rounds/<uuid>/image/`: private server-masked WebP, count query cannot accelerate reveal.
+- `GET /api/ranked/leaderboard/?page=1`: public positions, exact ratings, derived tiers, my_position and configured tier metadata.
+- `GET /api/ranked/history/<username>/?page=1`: completed public results and rating snapshots; No Contest distinguished.
+- `/ws/ranked/queue/<ticket>/` and `/ws/matches/<uuid>/`: origin-checked cookie-session sockets; personalized `state`, `heartbeat`, `access_denied`; match sockets also accept `guess` with HTTP-equivalent validation and return `guess_result` or `error`.
+
+All ranked mutations require CSRF; private reads/images are no-store. Identity is never accepted from a player-supplied participant ID. Errors include `library_empty`, `already_queued`, `match_in_progress`, `stale_queue`, `round_not_started`, `round_ended`, `guess_used`, `request_conflict`, `match_complete`, and `reconnect_expired`. HTTP guess retries refresh state instead of accepting another guess.
 
 ## Five-round singleplayer
 
