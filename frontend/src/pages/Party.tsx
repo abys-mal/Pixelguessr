@@ -375,7 +375,17 @@ function Lobby({
                     setTargetId(member.id);
                   }}
                 >
-                  <span aria-hidden="true">×</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M5 5l14 14M19 5L5 19" />
+                  </svg>
                 </button>
               )}
             </li>

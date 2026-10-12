@@ -1769,6 +1769,9 @@ main {
 }
 
 .party-kick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -1777,8 +1780,14 @@ main {
   border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  font-size: 25px;
+  line-height: 1;
   cursor: pointer;
+}
+.party-kick svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 .party-kick:hover,
 .party-kick:focus-visible {
@@ -1806,18 +1815,23 @@ main {
 }
 .party-ban-choice {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   margin: 24px 0;
   line-height: 1.5;
 }
-.party-ban-choice input {
+.party-ban-choice input[type='checkbox'] {
+  appearance: auto;
   width: 18px;
   height: 18px;
+  min-height: 18px;
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   flex: 0 0 18px;
-  margin: 3px 0 0;
+  margin: 0;
   accent-color: var(--violet);
 }
 .party-remove-dialog .danger {
