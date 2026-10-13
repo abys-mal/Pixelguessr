@@ -1,66 +1,113 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { DuelRound } from './ranked';
 
-// Only authorized masked frames enter the queue. Slow loads finish instead of being
-// repeatedly aborted by snapshots; pending intermediate frames are skipped.
+type DecodedFrame = {
+  url: string;
+  id: string;
+  tiles: Set<number>;
+  retirePrevious: () => void;
+  release: () => void;
+};
+
+// Only authorized masked frames enter the queue. Slow decodes finish; retries
+// load the latest snapshot, with backoff shared across a transient outage.
 export function RankedReveal({ round }: { round: DuelRound | null }) {
-  const [frame, setFrame] = useState<{ url: string; id: string; tiles: Set<number> } | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [frame, setFrame] = useState<DecodedFrame | null>(null);
+  const [failedRound, setFailedRound] = useState<string | null>(null);
   const enqueue = useRef<((next: DuelRound, force?: boolean) => void) | null>(null);
   const roundId = round?.id;
   useEffect(() => {
     let disposed = false;
     let busy = false;
     let latest: DuelRound | null = null;
-    let lastKey = '';
+    let loadedKey = '';
+    let blocked = false;
+    let failures = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const urls = new Set<string>();
+    const release = (url: string) => {
+      if (urls.delete(url)) URL.revokeObjectURL(url);
+    };
     const load = async () => {
-      if (busy) return;
+      if (disposed || busy || retry !== undefined || blocked || !latest) return;
+      if (latest.image_url === loadedKey) return;
       busy = true;
-      while (!disposed && latest && latest.image_url !== lastKey) {
-        const target = latest;
-        lastKey = target.image_url;
-        let url: string | undefined;
-        let committed = false;
-        try {
-          const response = await fetch(target.image_url, {
-            credentials: 'same-origin',
-            signal: controller.signal,
-          });
-          if (!response.ok) throw new Error('Unable to load this reveal.');
-          const count = response.headers.get('X-Revealed-Tiles');
-          if (count !== null && Number(count) !== target.revealed_tiles.length)
-            throw new Error('Reveal frame does not match its snapshot.');
-          const blob = await response.blob();
-          if (disposed) break;
-          url = URL.createObjectURL(blob);
-          urls.add(url);
-          const image = new Image();
-          image.src = url;
-          await image.decode();
-          if (disposed) break;
-          committed = true;
-          setFrame({ url, id: target.id, tiles: new Set(target.revealed_tiles) });
-          setFailed(false);
-        } catch {
-          if (!disposed) setFailed(true);
-        } finally {
-          if (url && !committed) URL.revokeObjectURL(url);
+      const target = latest;
+      let url: string | undefined;
+      let committed = false;
+      let transient = true;
+      try {
+        const response = await fetch(target.image_url, {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          // Retry network/server failures, timeouts and rate limits. Other client
+          // errors need an explicit reload or a new round, even if snapshots arrive.
+          transient = response.status >= 500 || [408, 429].includes(response.status);
+          throw new Error('Unable to load this reveal.');
         }
+        const count = response.headers.get('X-Revealed-Tiles');
+        if (count !== null && Number(count) !== target.revealed_tiles.length)
+          throw new Error('Reveal frame does not match its snapshot.');
+        const blob = await response.blob();
+        if (disposed) return;
+        url = URL.createObjectURL(blob);
+        urls.add(url);
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        if (disposed) return;
+        const decodedUrl = url;
+        const previous = [...urls].filter((value) => value !== decodedUrl);
+        committed = true;
+        loadedKey = target.image_url;
+        failures = 0;
+        setFrame({
+          url: decodedUrl,
+          id: target.id,
+          tiles: new Set(target.revealed_tiles),
+          retirePrevious: () => previous.forEach(release),
+          release: () => release(decodedUrl),
+        });
+        setFailedRound(null);
+      } catch {
+        if (!disposed) {
+          setFailedRound(target.id);
+          blocked = !transient;
+          if (transient) {
+            const delay = Math.min(8000, 500 * 2 ** failures);
+            failures = Math.min(failures + 1, 4);
+            retry = setTimeout(() => {
+              retry = undefined;
+              void load();
+            }, delay);
+          }
+        }
+      } finally {
+        if (url && !committed) release(url);
+        busy = false;
       }
-      busy = false;
+      // A successful slow frame may have been superseded during decoding.
+      if (!disposed && latest?.image_url !== loadedKey) void load();
     };
     enqueue.current = (next, force = false) => {
       latest = next;
-      if (force) lastKey = '';
+      if (force) {
+        clearTimeout(retry);
+        retry = undefined;
+        failures = 0;
+        blocked = false;
+        loadedKey = '';
+      }
       void load();
     };
     return () => {
       disposed = true;
       controller.abort();
-      // Also release frames React may have skipped while batching rapid decodes.
-      for (const url of urls) URL.revokeObjectURL(url);
+      clearTimeout(retry);
+      for (const url of urls) release(url);
       enqueue.current = null;
     };
   }, [roundId]);
@@ -68,11 +115,11 @@ export function RankedReveal({ round }: { round: DuelRound | null }) {
     if (round) enqueue.current?.(round);
   }, [round]);
   useEffect(() => {
-    const url = frame?.url;
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [frame?.url]);
+    // Covers decoded frames React skipped while batching, without retiring an
+    // image that is still on screen or another frame currently being decoded.
+    frame?.retirePrevious();
+    return () => frame?.release();
+  }, [frame]);
   const current = frame?.id === roundId ? frame : null;
   const grid = round?.grid_size ?? 20;
   return (
@@ -89,7 +136,7 @@ export function RankedReveal({ round }: { round: DuelRound | null }) {
           <i key={`${roundId}-${i}`} className={current?.tiles.has(i) ? 'is-revealed' : ''} />
         ))}
       </div>
-      {failed && (
+      {failedRound === roundId && (
         <div className="image-retry" role="alert">
           Picture interrupted.{' '}
           <button

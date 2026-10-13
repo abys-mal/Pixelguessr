@@ -394,7 +394,65 @@ def disconnect(connection_id):
             ).update(queued_at=None)
 
 
+def transition_due(match, players, game_round, now):
+    """Only durable deadlines can require a writer; reveal progress is read-only."""
+    if match.status != Match.Status.ACTIVE:
+        return False
+    cutoff = now - timedelta(seconds=rule("presence_seconds"))
+    if any(p.ranked_disconnected_at is None and p.ranked_last_seen < cutoff for p in players):
+        return True
+    absent = [p for p in players if p.ranked_disconnected_at is not None]
+    grace = timedelta(seconds=rule("grace_seconds"))
+    coincident = len(absent) == 2 and abs(
+        (absent[0].ranked_disconnected_at - absent[1].ranked_disconnected_at).total_seconds()
+    ) <= rule("coincidence_seconds")
+    expired = [now >= p.ranked_disconnected_at + grace for p in absent]
+    if expired and (all(expired) if coincident else any(expired)):
+        return True
+    if not game_round:
+        return False
+    if not game_round.ended_at:
+        return now >= game_round.reveal_started_at + timedelta(
+            seconds=game_round.reveal_duration_seconds
+        )
+    return now >= game_round.ended_at + timedelta(seconds=rule("results_seconds")) and all(
+        connected(p, now) for p in players
+    )
+
+
+def read_snapshot(user, match_id, *, include_states=True):
+    """Read persisted state without a writer gate when no transition is due.
+
+    SQLite's read transaction gives a consistent snapshot. PostgreSQL READ COMMITTED
+    may see a concurrent guess between SELECTs: recheck the durable match revision
+    after loading relations, retry, then fall back to the existing serialized path.
+    Nothing essential is cached in the process or inferred from a browser clock.
+    """
+    for _ in range(3):
+        with transaction.atomic():
+            match = owned(user, match_id)
+            players = participants(match)
+            game_round = current_round(match)
+            states = list(game_round.player_states.all()) if include_states and game_round else []
+            revision = (
+                Match.objects.filter(pk=match.pk).values_list("ranked_revision", flat=True).first()
+            )
+            if revision != match.ranked_revision:
+                continue
+            now = timezone.now()
+            if transition_due(match, players, game_round, now):
+                return None
+            return match, players, game_round, states, now
+    return None
+
+
 def state(user, match_id, *, connection_id=None, heartbeat=False):
+    if not heartbeat:
+        snapshot = read_snapshot(user, match_id)
+        if snapshot:
+            match, players, game_round, states, now = snapshot
+            return payload(match, user, now, snapshot=(players, game_round, states))
+    # Exit the read transaction before taking the writer gate (no SQLite lock upgrade).
     error = None
     result = None
     with transaction.atomic():
@@ -493,9 +551,13 @@ def reveal_count(game_round, now):
     return revealed_count(game_round, frame_time)
 
 
-def payload(match, user, now):
-    players = participants(match)
-    game_round = current_round(match)
+def payload(match, user, now, *, snapshot=None):
+    if snapshot is None:
+        players = participants(match)
+        game_round = current_round(match)
+        states = list(game_round.player_states.all()) if game_round else []
+    else:
+        players, game_round, states = snapshot
     result = {
         "id": str(match.pk),
         "status": match.status,
@@ -531,7 +593,6 @@ def payload(match, user, now):
     completed = game_round.ended_at is not None
     count = game_round.grid_size**2 if completed else reveal_count(game_round, now)
     deadline = game_round.reveal_started_at + timedelta(seconds=game_round.reveal_duration_seconds)
-    states = list(game_round.player_states.all())
     result["round"] = {
         "id": str(game_round.pk),
         "number": game_round.number,
@@ -574,22 +635,28 @@ def payload(match, user, now):
 
 
 def image(user, match_id, round_id):
-    # Reconciliation commits even when a stale/future image is refused.
-    state(user, match_id)
-    with transaction.atomic():
-        gate()
-        match = owned(user, match_id)
-        game_round = current_round(match)
-        if game_round.pk != round_id or (
-            match.status == Match.Status.COMPLETE and not game_round.ended_at
-        ):
-            raise NotFound("This ranked image is unavailable.")
-        now = timezone.now()
-        return (
-            game_round,
-            now,
-            game_round.grid_size**2 if game_round.ended_at else reveal_count(game_round, now),
-        )
+    snapshot = read_snapshot(user, match_id, include_states=False)
+    if snapshot:
+        match, _, game_round, _, now = snapshot
+    else:
+        # Commit due transitions even when the requested image is later refused.
+        state(user, match_id)
+        with transaction.atomic():
+            gate()
+            match = owned(user, match_id)
+            game_round = current_round(match)
+            now = timezone.now()
+    if (
+        not game_round
+        or game_round.pk != round_id
+        or (match.status == Match.Status.COMPLETE and not game_round.ended_at)
+    ):
+        raise NotFound("This ranked image is unavailable.")
+    return (
+        game_round,
+        now,
+        game_round.grid_size**2 if game_round.ended_at else reveal_count(game_round, now),
+    )
 
 
 def clock_tick():

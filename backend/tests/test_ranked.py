@@ -757,3 +757,134 @@ def test_correct_completion_still_ends_immediately_before_frame_boundary(game, u
     assert ranked.state(user, game.pk)["round"]["id"] == result["id"]
     advance(clock, 0.01)
     assert ranked.state(user, game.pk)["round"]["id"] != result["id"]
+
+
+def test_ranked_poll_query_budget(game, user, clock, client):
+    """Measure the actual socket/state/image pipelines on a disposable database."""
+    from django.test.utils import CaptureQueriesContext
+
+    from games.ranked_consumer import RankedConsumer
+
+    advance(clock, 8)
+    client.force_login(user)
+    socket = RankedConsumer()
+    socket.session_key = client.cookies["sessionid"].value
+    socket.match_id = game.pk
+    socket.connection_id = connect(user, game)
+    frame = ranked.state(user, game.pk)["round"]
+    measurements = {}
+    operations = {
+        "state": lambda: ranked.state(user, game.pk),
+        "socket_poll": socket.read,
+        "image_cold": lambda: client.get(frame["image_url"]),
+        "image_warm": lambda: client.get(frame["image_url"]),
+    }
+    for name, operation in operations.items():
+        with CaptureQueriesContext(connection) as captured:
+            operation()
+        sql = [q["sql"].strip().upper() for q in captured]
+        measurements[name] = {
+            "queries": len(sql),
+            "selects": sum(q.startswith("SELECT") for q in sql),
+            "writes": sum(q.startswith(("UPDATE", "INSERT", "DELETE")) for q in sql),
+            "gates": sum(q.startswith("UPDATE") and "GAMES_RANKEDGATE" in q for q in sql),
+        }
+    print("RANKED_QUERY_MEASUREMENTS=" + json.dumps(measurements, sort_keys=True))
+
+    for measurement in measurements.values():
+        assert measurement["writes"] == measurement["gates"] == 0
+    assert measurements["state"]["selects"] <= 6
+    assert measurements["socket_poll"]["selects"] <= 9
+    assert measurements["image_cold"]["selects"] <= 8
+    assert measurements["image_warm"] == measurements["image_cold"]
+
+
+def test_read_snapshot_retries_a_concurrent_completion(game, user, opponent, clock, monkeypatch):
+    """Simulate a commit between relation SELECTs, as with PostgreSQL READ COMMITTED."""
+    advance(clock, 3.13)
+    original = ranked.current_round
+    interleaved = False
+
+    def read_round(match):
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            submit(opponent, game)
+        return original(match)
+
+    monkeypatch.setattr(ranked, "current_round", read_round)
+    snapshot = ranked.state(user, game.pk)
+    game.refresh_from_db()
+    assert snapshot["revision"] == game.ranked_revision
+    assert snapshot["round"]["status"] == "results"
+    assert snapshot["round"]["completion"] is not None
+    assert next(p for p in snapshot["players"] if p["username"] == opponent.username)["wins"] == 1
+
+
+def test_heartbeat_keeps_writer_coordination_but_polls_do_not(game, user, clock):
+    from django.test.utils import CaptureQueriesContext
+
+    advance(clock, 8)
+    connection_id = connect(user, game)
+    before = game.participants.get(user=user).ranked_last_seen
+    advance(clock, 1, heartbeat=False)
+    ranked.state(user, game.pk)
+    assert game.participants.get(user=user).ranked_last_seen == before
+    with CaptureQueriesContext(connection) as captured:
+        ranked.state(user, game.pk, heartbeat=True, connection_id=connection_id)
+    assert any("UPDATE" in q["sql"] and "games_rankedgate" in q["sql"] for q in captured)
+    assert game.participants.get(user=user).ranked_last_seen == clock["now"]
+    assert RankedConnection.objects.get(pk=connection_id).last_seen == clock["now"]
+
+
+def test_cached_frame_rechecks_restrictions_and_forfeit(game, user, opponent, clock, client, staff):
+    from moderation.models import Sanction
+
+    advance(clock, 8)
+    client.force_authenticate(user)
+    frame = ranked.state(user, game.pk)["round"]["image_url"]
+    assert client.get(frame).status_code == 200
+    sanction = Sanction.objects.create(
+        user=user,
+        issued_by=staff,
+        category="fair_play",
+        kind="probation",
+        reason="Test restriction",
+    )
+    assert client.get(frame).status_code == 403
+    sanction.revoked_at = clock["now"]
+    sanction.revoked_by = staff
+    sanction.save(update_fields=["revoked_at", "revoked_by"])
+    assert client.get(frame).status_code == 200
+    ranked.leave(opponent, game.pk)
+    assert client.get(frame).status_code == 404
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_read_only_polls_race_with_a_correct_guess(images, user, opponent, clock):
+    from threading import Barrier
+
+    if connection.vendor == "sqlite" and connection.is_in_memory_db():
+        pytest.skip("Use TEST_SQLITE_FILE for SQLite reader/writer concurrency")
+    game = pair(user, opponent)
+    advance(clock, 3.13)
+    barrier = Barrier(3)
+
+    def run(index):
+        close_old_connections()
+        try:
+            local_user = User.objects.get(pk=user.pk)
+            barrier.wait(timeout=10)
+            if index == 0:
+                return [submit(local_user, game)["state"]]
+            return [ranked.state(local_user, game.pk) for _ in range(10)]
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(3) as workers:
+        snapshots = list(workers.map(run, range(3)))
+    for snapshot in [s for group in snapshots for s in group]:
+        player = next(p for p in snapshot["players"] if p["username"] == user.username)
+        assert player["wins"] == int(snapshot["round"]["status"] == "results")
+        assert (snapshot["round"]["completion"] is not None) == (player["wins"] == 1)
+    assert ranked.state(opponent, game.pk)["round"]["status"] == "results"
