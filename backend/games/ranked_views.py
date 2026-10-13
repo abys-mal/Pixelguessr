@@ -1,9 +1,13 @@
+from threading import Lock
+
+from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -17,6 +21,10 @@ from .ranked_rules import rule, tier
 from .reveal import render_reveal
 from .serializers import StartRoundSerializer
 from .singleplayer_views import SingleplayerView
+
+# Bounded process-local locks coalesce simultaneous requests for the same frame.
+# Redis remains the shared cache in deployment; permissions are checked before locking.
+_frame_locks = [Lock() for _ in range(64)]
 
 
 class RankedView(SingleplayerView):
@@ -75,7 +83,22 @@ class RankedLeaveView(RankedView):
 class RankedImageView(RankedView):
     def get(self, request, match_id, round_id):
         game_round, now, count = ranked.image(request.user, match_id, round_id)
-        content, count = render_reveal(game_round, now, count=count)
+        requested = request.query_params.get("v")
+        if requested is not None:
+            try:
+                requested = int(requested)
+            except (ValueError, TypeError) as exc:
+                raise ValidationError("Invalid reveal frame.") from exc
+            if requested < 0 or requested > count:
+                raise ValidationError("This reveal frame is not available yet.")
+            count = requested
+        # Authorization/reconciliation above always precedes even a cache hit.
+        key = f"ranked-frame:v1:{game_round.pk}:{count}"
+        with _frame_locks[hash(key) % len(_frame_locks)]:
+            content = cache.get(key)
+            if content is None:
+                content, count = render_reveal(game_round, now, count=count)
+                cache.set(key, content, timeout=60)
         response = HttpResponse(content, content_type="image/webp")
         response["X-Revealed-Tiles"] = str(count)
         response["Content-Disposition"] = 'inline; filename="reveal.webp"'

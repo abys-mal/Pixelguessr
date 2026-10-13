@@ -105,58 +105,84 @@ export function connectRanked<T>(
   onState: (state: T) => void,
   onConnection: (status: ConnectionStatus) => void,
   onError: (error: Error) => void,
+  onTime?: (server: string, sent: number, received: number) => void,
 ) {
   let socket: WebSocket | null = null;
   let stopped = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let sent: number | null = null;
+  const sync = (active: WebSocket) => {
+    sent = performance.now();
+    active.send(JSON.stringify({ type: 'clock', token: String(sent) }));
+  };
   const open = () => {
     if (stopped) return;
-    socket = new WebSocket(
+    const active = new WebSocket(
       `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${path}`,
     );
-    socket.onopen = () => {
-      if (!stopped) onConnection('Connected');
+    socket = active;
+    const current = () => !stopped && socket === active;
+    active.onopen = () => {
+      if (!current()) return;
+      onConnection('Connected');
+      sync(active);
     };
-    socket.onmessage = (event) => {
-      if (stopped) return;
+    active.onmessage = (event) => {
+      if (!current()) return;
       let message;
       try {
         message = JSON.parse(event.data);
       } catch {
         return;
       }
-      if (message.type === 'access_denied') {
-        stopped = true;
-        clearInterval(heartbeat);
-        clearTimeout(retry);
+      if (message?.type === 'clock' && sent !== null && message.token === String(sent)) {
+        onTime?.(message.server_now, sent, performance.now());
+        sent = null;
+      } else if (message?.type === 'access_denied') {
+        stop();
         onConnection('Disconnected');
         onError(new ApiError(message.detail, message.status || 403, message.code));
-        socket?.close();
-      } else if (message.state) onState(message.state as T);
+      } else if (message?.state) onState(message.state as T);
     };
-    socket.onclose = (event) => {
-      if (stopped) return;
+    active.onclose = (event) => {
+      if (!current()) return;
+      socket = null;
+      sent = null;
       if (event.code === 4403) {
-        stopped = true;
-        clearInterval(heartbeat);
+        stop();
         onConnection('Disconnected');
         onError(new Error('This ranked connection is unavailable. Refresh to check the match.'));
         return;
       }
       onConnection('Reconnecting');
+      clearTimeout(retry);
       retry = setTimeout(open, 2000);
     };
-    socket.onerror = () => socket?.close();
+    active.onerror = () => {
+      if (current()) active.close();
+    };
   };
   const heartbeat = setInterval(() => {
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'heartbeat' }));
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'heartbeat' }));
+      sync(socket);
+    }
   }, 5000);
-  onConnection('Connecting');
-  open();
-  return () => {
+  function stop() {
     stopped = true;
     clearInterval(heartbeat);
     clearTimeout(retry);
-    socket?.close();
-  };
+    if (socket) {
+      const active = socket;
+      socket = null;
+      // Closing CONNECTING sockets aborts the proxy handshake. Let it finish, then close.
+      active.onmessage = active.onclose = active.onerror = null;
+      if (active.readyState === WebSocket.OPEN) active.close();
+      else if (active.readyState === WebSocket.CONNECTING) active.onopen = () => active.close();
+    }
+  }
+  onConnection('Connecting');
+  // StrictMode's setup/cleanup cycle cancels this before a handshake is created.
+  retry = setTimeout(open, 0);
+  return stop;
 }

@@ -486,6 +486,13 @@ def leave(user, match_id):
         return payload(match, user, timezone.now())
 
 
+def reveal_count(game_round, now):
+    # Shared 250ms timeline frames; never grant pixels ahead of the live server clock.
+    elapsed = max(0, (now - game_round.reveal_started_at).total_seconds())
+    frame_time = game_round.reveal_started_at + timedelta(seconds=int(elapsed * 4) / 4)
+    return revealed_count(game_round, frame_time)
+
+
 def payload(match, user, now):
     players = participants(match)
     game_round = current_round(match)
@@ -522,7 +529,7 @@ def payload(match, user, now):
     if not game_round:
         return result
     completed = game_round.ended_at is not None
-    count = game_round.grid_size**2 if completed else revealed_count(game_round, now)
+    count = game_round.grid_size**2 if completed else reveal_count(game_round, now)
     deadline = game_round.reveal_started_at + timedelta(seconds=game_round.reveal_duration_seconds)
     states = list(game_round.player_states.all())
     result["round"] = {
@@ -581,7 +588,7 @@ def image(user, match_id, round_id):
         return (
             game_round,
             now,
-            game_round.grid_size**2 if game_round.ended_at else revealed_count(game_round, now),
+            game_round.grid_size**2 if game_round.ended_at else reveal_count(game_round, now),
         )
 
 

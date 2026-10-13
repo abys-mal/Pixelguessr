@@ -7,6 +7,7 @@ from contextlib import suppress
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.exceptions import APIException
 
 from . import ranked
@@ -36,6 +37,7 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"type": "state", "state": state})
         self.last_heartbeat = asyncio.get_running_loop().time()
         self.last_message = 0
+        self.last_clock = -float("inf")
         self.timer = asyncio.create_task(self.tick())
 
     def read(self, heartbeat=False, connect=False):
@@ -73,7 +75,8 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
 
     async def tick(self):
         while True:
-            await asyncio.sleep(1)
+            # Align all workers/sockets to the same wall-clock quarter seconds.
+            await asyncio.sleep(0.25 - timezone.now().timestamp() % 0.25)
             if not await self.push():
                 return
 
@@ -99,6 +102,14 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "error", "detail": "Send a JSON object."})
             return
         now = asyncio.get_running_loop().time()
+        if content.get("type") == "clock":
+            token = content.get("token")
+            if isinstance(token, str) and len(token) <= 64 and now - self.last_clock >= 1:
+                self.last_clock = now
+                await self.send_json(
+                    {"type": "clock", "token": token, "server_now": timezone.now().isoformat()}
+                )
+            return
         if content.get("type") == "heartbeat":
             if now - self.last_heartbeat >= 3:
                 self.last_heartbeat = now

@@ -159,7 +159,7 @@ def start_round(request, request_id):
             # Shared owner lock serializes new starts even with different request UUIDs.
             # UPDATE also works on SQLite, where select_for_update has no effect.
             owner = next(iter(identity.values()))
-            type(owner).objects.filter(pk=owner.pk).update(display_name=F("display_name"))
+            owner._meta.model.objects.filter(pk=owner.pk).update(display_name=F("display_name"))
             # Recheck idempotency after waiting for the owner lock.
             previous = Round.objects.filter(start_request_id=request_id).first()
             if previous:

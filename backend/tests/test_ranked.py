@@ -675,6 +675,13 @@ async def test_authenticated_ranked_sockets_and_session_revocation(images, user,
     second = (await b.receive_json_from())["state"]
     assert first["round"]["started_at"] == second["round"]["started_at"]
     assert first["round"]["completion"] is None
+    await a.send_json_to({"type": "clock", "token": "latency-sample"})
+    timing = await a.receive_json_from()
+    assert timing == {
+        "type": "clock",
+        "token": "latency-sample",
+        "server_now": clock["now"].isoformat(),
+    }
     advance(clock, 3, heartbeat=False)
     await a.send_json_to(
         {
@@ -696,3 +703,57 @@ async def test_authenticated_ranked_sockets_and_session_revocation(images, user,
     assert "wrong" not in json.dumps(peer) and peer["round"]["completion"] is None
     await a.disconnect()
     await b.disconnect()
+
+
+def test_shared_reveal_frames_match_snapshots_and_cache_permissions(
+    game, user, opponent, clock, client, monkeypatch
+):
+    from django.core.cache import cache
+
+    from games import ranked_views
+
+    cache.clear()
+    advance(clock, 3.51)
+    first = ranked.state(user, game.pk)["round"]
+    advance(clock, 0.12)
+    second = ranked.state(opponent, game.pk)["round"]
+    assert first["revealed_tiles"] == second["revealed_tiles"]
+    assert first["revealed_count"] == 4
+    assert first["completion"] is None
+    client.force_authenticate(user)
+    calls = []
+    original = ranked_views.render_reveal
+
+    def render(*args, **kwargs):
+        calls.append(kwargs["count"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(ranked_views, "render_reveal", render)
+    # A later request still renders exactly the snapshot's prefix.
+    advance(clock, 1)
+    response = client.get(first["image_url"])
+    assert response.status_code == 200 and response["X-Revealed-Tiles"] == "4"
+    frame = Image.open(BytesIO(response.content)).convert("RGB")
+    visible = set(first["revealed_tiles"])
+    for i in range(400):
+        if i not in visible:
+            assert frame.getpixel(((i % 20) * 48 + 24, (i // 20) * 36 + 18)) == (35, 33, 48)
+    client.force_authenticate(opponent)
+    assert client.get(first["image_url"]).content == response.content
+    assert calls == [4]
+    future = first["image_url"].split("?")[0] + "?v=400"
+    assert client.get(future).status_code == 400
+    assert client.get(first["image_url"].split("?")[0] + "?v=invalid").status_code == 400
+    client.force_authenticate(None)
+    assert client.get(first["image_url"]).status_code == 403
+
+
+def test_correct_completion_still_ends_immediately_before_frame_boundary(game, user, clock):
+    advance(clock, 3.13)
+    result = submit(user, game)["state"]["round"]
+    assert result["status"] == "results" and result["revealed_count"] == 400
+    assert result["next_starts_at"] == (clock["now"] + timedelta(seconds=5)).isoformat()
+    advance(clock, 4.99)
+    assert ranked.state(user, game.pk)["round"]["id"] == result["id"]
+    advance(clock, 0.01)
+    assert ranked.state(user, game.pk)["round"]["id"] != result["id"]

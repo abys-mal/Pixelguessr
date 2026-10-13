@@ -15,7 +15,7 @@ export function Pagination({
   onPage: (page: number) => void;
 }) {
   return (
-    <nav className="result-actions" aria-label="Page navigation">
+    <nav className="ranked-pagination" aria-label="Page navigation">
       <button className="button secondary" disabled={!previous} onClick={() => onPage(page - 1)}>
         Previous
       </button>

@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { RankedReveal } from '../games/RankedReveal';
+import type { DuelRound } from '../games/ranked';
 import { Reveal } from '../games/Reveal';
 import type { GameRound } from '../games/singleplayer';
 
@@ -93,4 +95,53 @@ describe('Server-masked reveal delivery', () => {
     view.unmount();
     expect(revoke).toHaveBeenCalledWith('blob:private-frame');
   });
+});
+
+it('Ranked keeps identical frames across clock snapshots and finishes slow decodes before loading latest', async () => {
+  create.mockReturnValueOnce('blob:first').mockReturnValueOnce('blob:latest');
+  let decode!: () => void;
+  const decoding = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          decode = resolve;
+        }),
+    )
+    .mockResolvedValue(undefined);
+  vi.stubGlobal(
+    'Image',
+    class {
+      src = '';
+      decode = decoding;
+    },
+  );
+  const first = { ...round } as unknown as DuelRound;
+  const view = render(<RankedReveal round={first} />);
+  await waitFor(() => expect(decoding).toHaveBeenCalledOnce());
+  view.rerender(<RankedReveal round={{ ...first }} />);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const third = { ...first, image_url: '/image/?v=3', revealed_tiles: [17, 306, 88] };
+  view.rerender(<RankedReveal round={third} />);
+  const fourth = { ...third, image_url: '/image/?v=4', revealed_tiles: [17, 306, 88, 99] };
+  view.rerender(<RankedReveal round={fourth} />);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(document.querySelectorAll('.is-revealed')).toHaveLength(0);
+  decode();
+  await waitFor(() => expect(document.querySelectorAll('.is-revealed')).toHaveLength(4));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/image/?v=4');
+  view.rerender(<RankedReveal round={{ ...fourth }} />);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  view.unmount();
+  expect(revoke).toHaveBeenCalledWith('blob:first');
+  expect(revoke).toHaveBeenCalledWith('blob:latest');
+});
+it('Ranked rejects a masked frame that disagrees with its authorized prefix', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(
+    new Response(new Blob(['masked']), { headers: { 'X-Revealed-Tiles': '20' } }),
+  );
+  render(<RankedReveal round={round as unknown as DuelRound} />);
+  await screen.findByRole('alert');
+  expect(document.querySelectorAll('.is-revealed')).toHaveLength(0);
 });

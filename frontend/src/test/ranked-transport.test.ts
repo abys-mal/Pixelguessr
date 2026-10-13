@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectRanked } from '../games/ranked';
 class Socket {
   static OPEN = 1;
+  static CONNECTING = 0;
   static instances: Socket[] = [];
   readyState = 0;
   onopen: (() => void) | null = null;
@@ -25,7 +26,9 @@ class Socket {
   }
 }
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'],
+  });
   Socket.instances = [];
   vi.stubGlobal('WebSocket', Socket);
 });
@@ -40,6 +43,7 @@ describe('Ranked private transport', () => {
       error = vi.fn();
     const close = connectRanked('/ws/matches/id/', state, status, error);
     expect(status).toHaveBeenCalledExactlyOnceWith('Connecting');
+    await vi.advanceTimersByTimeAsync(0);
     const socket = Socket.instances[0];
     expect(socket.url).toContain('/ws/matches/id/');
     socket.open();
@@ -61,6 +65,7 @@ describe('Ranked private transport', () => {
       status = vi.fn(),
       error = vi.fn();
     const close = connectRanked('/ws/ranked/queue/ticket/', state, status, error);
+    await vi.advanceTimersByTimeAsync(0);
     const socket = Socket.instances[0];
     socket.open();
     socket.message({
@@ -80,10 +85,55 @@ describe('Ranked private transport', () => {
   it('stops retrying an unauthenticated handshake', async () => {
     const error = vi.fn();
     const close = connectRanked('/ws/matches/id/', vi.fn(), vi.fn(), error);
+    await vi.advanceTimersByTimeAsync(0);
     Socket.instances[0].close(4403);
     await vi.advanceTimersByTimeAsync(20000);
     expect(Socket.instances).toHaveLength(1);
     expect(error).toHaveBeenCalledOnce();
     close();
   });
+});
+
+it('cancels StrictMode setup before opening a duplicate handshake', async () => {
+  const state = vi.fn(),
+    status = vi.fn(),
+    error = vi.fn();
+  connectRanked('/ws/matches/id/', state, status, error)();
+  const close = connectRanked('/ws/matches/id/', state, status, error);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Socket.instances).toHaveLength(1);
+  close();
+  // Cleanup during CONNECTING lets the handshake finish then closes it silently.
+  Socket.instances[0].open();
+  expect(Socket.instances[0].readyState).toBe(3);
+  expect(status).not.toHaveBeenCalledWith('Reconnecting');
+  await vi.advanceTimersByTimeAsync(20000);
+  expect(Socket.instances).toHaveLength(1);
+  expect(error).not.toHaveBeenCalled();
+});
+it('measures RTT after reconnect and ignores late callbacks from the old socket', async () => {
+  const time = vi.fn(),
+    state = vi.fn();
+  const close = connectRanked('/ws/matches/id/', state, vi.fn(), vi.fn(), time);
+  await vi.advanceTimersByTimeAsync(0);
+  const old = Socket.instances[0];
+  old.open();
+  const request = JSON.parse(old.send.mock.calls[0][0]);
+  await vi.advanceTimersByTimeAsync(200);
+  old.message({ type: 'clock', token: request.token, server_now: '2026-10-12T12:00:00Z' });
+  expect(time).toHaveBeenCalledWith('2026-10-12T12:00:00Z', 0, 200);
+  old.close(1006);
+  await vi.advanceTimersByTimeAsync(2000);
+  const current = Socket.instances[1];
+  current.open();
+  old.message({ state: { stale: true } });
+  old.onerror?.();
+  expect(current.readyState).toBe(1);
+  expect(state).not.toHaveBeenCalled();
+  const next = JSON.parse(current.send.mock.calls[0][0]);
+  await vi.advanceTimersByTimeAsync(50);
+  current.message({ type: 'clock', token: next.token, server_now: '2026-10-12T12:00:02.125Z' });
+  expect(time).toHaveBeenLastCalledWith('2026-10-12T12:00:02.125Z', 2200, 2250);
+  close();
+  expect(vi.getTimerCount()).toBe(0);
 });

@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ServerClock } from './serverClock';
 import { ApiError } from '../api';
 import { connectRanked, rankedApi, type ConnectionStatus, type DuelState } from './ranked';
 export function useRanked(id: string) {
+  const [clock] = useState(() => new ServerClock());
+  const sample = useCallback(
+    (server: string, sent: number, received: number) => clock.sample(server, sent, received),
+    [clock],
+  );
   const [state, setState] = useState<DuelState | null>(null);
   const [connection, setConnection] = useState<ConnectionStatus>('Connecting');
   const [error, setError] = useState('');
@@ -29,23 +35,31 @@ export function useRanked(id: string) {
     const safeReceive = (next: DuelState) => {
       if (!disposed) receive(next);
     };
+    const sent = performance.now();
     void rankedApi
       .state(id)
-      .then(safeReceive)
+      .then((next) => {
+        if (!disposed) sample(next.server_now, sent, performance.now());
+        safeReceive(next);
+      })
       .catch((err: Error) => {
         if (!disposed) setError(err.message);
       });
     return () => {
       disposed = true;
     };
-  }, [id, receive]);
+  }, [id, receive, sample]);
   const complete = state?.status === 'complete';
   useEffect(() => {
     if (complete) return;
-    return connectRanked<DuelState>(`/ws/matches/${id}/`, receive, setConnection, (err) =>
-      setError(err.message),
+    return connectRanked<DuelState>(
+      `/ws/matches/${id}/`,
+      receive,
+      setConnection,
+      (err) => setError(err.message),
+      sample,
     );
-  }, [id, receive, complete]);
+  }, [id, receive, complete, sample]);
   useEffect(() => {
     if (complete || connection === 'Connected') return;
     let disposed = false;
@@ -110,19 +124,19 @@ export function useRanked(id: string) {
       setPending(false);
     }
   };
-  return { state, connection, error, pending, guess, leave };
+  return { state, connection, error, pending, guess, leave, clock };
 }
-// Countdown display uses a local monotonic interval anchored to each server snapshot.
-export function useServerTime(serverNow?: string) {
-  const [tick, setTick] = useState({ server: serverNow, offset: 0 });
+// Snapshot timestamps bootstrap only. RTT samples refine a persistent monotonic clock.
+export function useServerTime(serverNow?: string, suppliedClock?: ServerClock) {
+  const [ownClock] = useState(() => new ServerClock());
+  const clock = suppliedClock ?? ownClock;
+  const [now, setNow] = useState(0);
   useEffect(() => {
-    if (!serverNow) return;
-    const started = performance.now();
-    const timer = setInterval(
-      () => setTick({ server: serverNow, offset: performance.now() - started }),
-      100,
-    );
+    if (serverNow) clock.anchor(serverNow);
+  }, [clock, serverNow]);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(clock.now()), 50);
     return () => clearInterval(timer);
-  }, [serverNow]);
-  return (serverNow ? Date.parse(serverNow) : 0) + (tick.server === serverNow ? tick.offset : 0);
+  }, [clock]);
+  return now || (serverNow ? Date.parse(serverNow) : 0);
 }

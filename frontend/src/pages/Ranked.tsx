@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/context';
 import { Badge, PageHeading, SignInPrompt, StatusMessage } from '../components/ui';
-import { Reveal } from '../games/Reveal';
+import { RankedReveal } from '../games/RankedReveal';
 import { connectRanked, rankedApi, type ConnectionStatus, type QueueState } from '../games/ranked';
 import { useRanked, useServerTime } from '../games/useRanked';
 
@@ -174,10 +174,10 @@ export function RankedRoute() {
   return <RankedGame key={id} id={id!} />;
 }
 function RankedGame({ id }: { id: string }) {
-  const { state, connection, error, pending, guess, leave } = useRanked(id);
+  const { state, connection, error, pending, guess, leave, clock } = useRanked(id);
   const [draft, setDraft] = useState({ round: '', text: '' });
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const now = useServerTime(state?.status === 'complete' ? undefined : state?.server_now);
+  const now = useServerTime(state?.status === 'complete' ? undefined : state?.server_now, clock);
   const heading = useRef<HTMLHeadingElement>(null);
   const input = useRef<HTMLInputElement | null>(null);
   const focusInput = useCallback((node: HTMLInputElement | null) => {
@@ -300,7 +300,7 @@ function RankedGame({ id }: { id: string }) {
           ) : (
             <div className="ranked-play-grid">
               <div>
-                <Reveal round={round} />
+                <RankedReveal round={round} />
                 {round?.completion && (
                   <p className="field-help">
                     {round.completion.attribution} · {round.completion.license}

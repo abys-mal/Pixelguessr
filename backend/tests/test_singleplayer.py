@@ -644,3 +644,16 @@ def test_concurrent_new_starts_create_only_one_game(hosted, user, same_request):
     assert sorted(statuses) == ([201, 201] if same_request else [201, 409])
     assert Match.objects.count() == 1 and Round.objects.count() == 5
     assert Participant.objects.get().total_score == 0
+
+
+def test_registered_start_uses_cookie_session_identity(hosted, client, user):
+    client.force_login(user, backend="accounts.backends.AccountBackend")
+    request_id = uuid.uuid4()
+    response = start(client, request_id)
+    assert response.status_code == 201
+    game_round = Round.objects.get(pk=response.json()["round"]["id"])
+    participant = game_round.match.participants.get()
+    assert participant.user_id == user.pk and participant.guest_id is None
+    assert start(client, request_id).status_code == 201
+    assert start(client).status_code == 409
+    assert Match.objects.filter(participants__user=user, mode="singleplayer").count() == 1

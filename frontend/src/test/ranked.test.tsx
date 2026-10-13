@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
+import { Pagination } from '../pages/RankedPublic';
 import { AuthContext } from '../auth/context';
 import { rankedApi, type DuelState, type QueueState } from '../games/ranked';
 import { api } from '../api';
@@ -9,7 +10,7 @@ let deliver: (state: DuelState | QueueState) => void;
 let connectionChanged: (status: string) => void;
 const close = vi.fn();
 vi.mock('../api', async (original) => ({ ...(await original<object>()), api: vi.fn() }));
-vi.mock('../games/Reveal', () => ({ Reveal: () => <div>Server-masked picture</div> }));
+vi.mock('../games/RankedReveal', () => ({ RankedReveal: () => <div>Server-masked picture</div> }));
 vi.mock('../games/ranked', async (original) => ({
   ...(await original<object>()),
   rankedApi: {
@@ -370,4 +371,20 @@ describe('Ranked duel', () => {
     expect(screen.getByText('4–2')).toBeInTheDocument();
     expect(screen.queryByText('private@example.com')).not.toBeInTheDocument();
   });
+});
+
+it('pagination preserves centered slots when disabled and handles page navigation', () => {
+  const change = vi.fn();
+  const view = render(<Pagination page={1} next="page2" previous={null} onPage={change} />);
+  expect(screen.getByRole('navigation', { name: 'Page navigation' })).toHaveClass(
+    'ranked-pagination',
+  );
+  expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(change).toHaveBeenLastCalledWith(2);
+  view.rerender(<Pagination page={2} next={null} previous="page1" onPage={change} />);
+  expect(screen.getByText('Page 2')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+  expect(change).toHaveBeenLastCalledWith(1);
 });
