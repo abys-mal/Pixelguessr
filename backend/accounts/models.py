@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 from games.ranked_rules import starting_rating
 
@@ -17,6 +18,7 @@ class User(AbstractUser):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
+    last_username_change = models.DateTimeField(default=timezone.now, editable=False)
     display_name = models.CharField(max_length=40, blank=True)
     rating = models.PositiveIntegerField(default=starting_rating, db_index=True)
     ranked_matches = models.PositiveIntegerField(default=0)
@@ -24,6 +26,12 @@ class User(AbstractUser):
     ranked_losses = models.PositiveIntegerField(default=0)
     # Legacy column retained for compatibility; API tiers are derived from rating.
     ranked_tier = models.CharField(max_length=12, choices=Tier, default=Tier.UNRANKED)
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            # Account creation is the initial assignment, including trusted creation.
+            self.last_username_change = self.date_joined
+        super().save(*args, **kwargs)
 
     class Meta:
         constraints = [

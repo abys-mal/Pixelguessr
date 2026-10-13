@@ -172,7 +172,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
           </p>
           <p className="muted">Member since {new Date(profile.date_joined).toLocaleDateString()}</p>
           {own && (
-            <Link className="button secondary" to="/settings">
+            <Link className="button secondary" to="/settings/account">
               Account settings ↗
             </Link>
           )}

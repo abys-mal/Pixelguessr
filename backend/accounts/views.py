@@ -1,8 +1,10 @@
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.db import IntegrityError, transaction
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -12,11 +14,15 @@ from rest_framework.views import APIView
 from moderation.services import account_restrictions
 
 from .models import User
+from .permissions import AccountAccess
 from .serializers import (
+    EmailChangeSerializer,
     LoginSerializer,
+    PasswordChangeSerializer,
     PublicProfileSerializer,
     RegisterSerializer,
     SettingsSerializer,
+    UsernameChangeSerializer,
     UserSerializer,
 )
 
@@ -107,3 +113,53 @@ class ProfileView(APIView):
 
         user = get_object_or_404(User, username=username, is_active=True)
         return Response(PublicProfileSerializer(user).data)
+
+
+@method_decorator(never_cache, name="dispatch")
+class AccountSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .services import settings_payload
+
+        return Response(settings_payload(request.user))
+
+
+@method_decorator(csrf_protect, name="dispatch")
+@method_decorator(never_cache, name="dispatch")
+@method_decorator(sensitive_post_parameters(), name="dispatch")
+class AccountChangeView(APIView):
+    permission_classes = [IsAuthenticated, AccountAccess]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account_change"
+    operation = None
+    serializer_class = None
+
+    def post(self, request):
+        from .services import change_account, settings_payload
+
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            user = change_account(request.user.pk, self.operation, serializer.validated_data)
+        except IntegrityError:
+            # Database constraints also handle concurrent claims by different users.
+            return Response({"detail": "Username or email is unavailable."}, status=400)
+        if self.operation == "password":
+            update_session_auth_hash(request, user)
+        return Response({"settings": settings_payload(user)})
+
+
+class ChangeUsernameView(AccountChangeView):
+    operation = "username"
+    serializer_class = UsernameChangeSerializer
+
+
+class ChangeEmailView(AccountChangeView):
+    operation = "email"
+    serializer_class = EmailChangeSerializer
+
+
+class ChangePasswordView(AccountChangeView):
+    operation = "password"
+    serializer_class = PasswordChangeSerializer

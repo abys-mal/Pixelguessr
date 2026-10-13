@@ -11,6 +11,7 @@ def registration():
         "username": "newplayer",
         "email": "new@example.com",
         "password": "complex-pixel-password-952",
+        "password_confirm": "complex-pixel-password-952",
     }
 
 
@@ -38,6 +39,9 @@ def test_registration_session_and_csrf_rotation():
     )
     assert response.status_code == 201
     assert "password" not in response.json()["user"]
+    assert "password_confirm" not in response.json()["user"]
+    created = User.objects.get(username="newplayer")
+    assert created.last_username_change == created.date_joined
     assert client.get("/api/auth/me/").json()["user"]["username"] == "newplayer"
     # The pre-login token becomes invalid after Django rotates CSRF secrets.
     assert client.post("/api/auth/logout/", HTTP_X_CSRFTOKEN=token).status_code == 403
@@ -88,7 +92,9 @@ def test_case_insensitive_registration_uniqueness(client, user):
 def test_weak_password_rejected(client):
     assert (
         client.post(
-            "/api/auth/register/", {**registration(), "password": "password"}, format="json"
+            "/api/auth/register/",
+            {**registration(), "password": "password", "password_confirm": "password"},
+            format="json",
         ).status_code
         == 400
     )
@@ -108,3 +114,16 @@ def test_auth_throttle(client):
         for _ in range(11)
     ]
     assert responses[-1].status_code == 429
+
+
+@pytest.mark.parametrize("confirmation", [None, "mismatched-password"])
+def test_registration_requires_password_confirmation(client, confirmation):
+    data = registration()
+    if confirmation is None:
+        data.pop("password_confirm")
+    else:
+        data["password_confirm"] = confirmation
+    response = client.post("/api/auth/register/", data, format="json")
+    assert response.status_code == 400
+    assert "password_confirm" in response.json()
+    assert User.objects.count() == 0

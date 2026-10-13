@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
+import { AccountSecurity } from './AccountSecurity';
 import { RankedProfile } from './RankedPublic';
 import { api } from '../api';
 import type { Page } from '../api';
@@ -74,8 +75,9 @@ export function Settings() {
   return (
     <>
       <PageHeading eyebrow="MAKE IT YOURS" title="Account settings">
-        Your profile and account notices, in one place.
+        Manage your sign-in details, profile, and account notices.
       </PageHeading>
+      <AccountSecurity user={user} />
       <div className="settings-grid">
         <form className="panel form-stack" onSubmit={(event) => void save(event)}>
           <h2>Profile details</h2>
@@ -94,7 +96,6 @@ export function Settings() {
           <button className="button" disabled={pending}>
             {pending ? 'Please wait…' : 'Save display name'}
           </button>
-          <p className="field-help">Email and password changes are planned for a later phase.</p>
         </form>
         <section className="panel">
           <h2>Account notices</h2>

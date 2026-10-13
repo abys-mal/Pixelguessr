@@ -1979,3 +1979,60 @@ main {
     padding-inline: 0.25rem;
   }
 }
+
+/* Scoped sign-in settings retain the existing panels and keyboard focus rings. */
+.account-security {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.account-security-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.account-security-card h2,
+.account-security-card p {
+  margin: 0;
+}
+.account-security-card > button {
+  margin-top: auto;
+  align-self: flex-start;
+}
+.account-security-card .field-help {
+  line-height: 1.7;
+}
+.account-value {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.account-change-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.account-change-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.account-change-actions .button {
+  min-width: 0;
+}
+.account-security > .message {
+  grid-column: 1 / -1;
+}
+.account-security-loading {
+  margin-bottom: 28px;
+}
+@media (max-width: 1050px) {
+  .account-security {
+    grid-template-columns: 1fr;
+  }
+}

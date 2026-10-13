@@ -1,4 +1,4 @@
-# Pixelguessr API — through Phase 3.1
+# Pixelguessr API — through Phase 5.1
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
 
@@ -7,7 +7,7 @@ All paths have trailing slashes. JSON responses unless noted. Session cookies au
 | GET    | `/api/health/live/`                             | Public process liveness                                                                       |
 | GET    | `/api/health/ready/`                            | Public DB/cache readiness; 503 with no internal errors on failure                             |
 | GET    | `/api/auth/csrf/`                               | Public masked CSRF token + cookie                                                             |
-| POST   | `/api/auth/register/`                           | CSRF required; username, email, password, optional display_name; creates session; 201         |
+| POST   | `/api/auth/register/`                           | CSRF required; username, email, password, password_confirm, optional display_name; creates session; 201         |
 | POST   | `/api/auth/login/`                              | CSRF required; username/password; creates session                                             |
 | POST   | `/api/auth/logout/`                             | Session + CSRF; 204                                                                           |
 | GET    | `/api/auth/me/`                                 | Public; `{user: null, restrictions: null}` for guests, private user/restrictions for accounts |
@@ -28,6 +28,25 @@ Standard paginated result: `{count, next, previous, results}` (24 per page). Val
 Submission fields: `canonical_answer` (120 chars), `accepted_synonyms` (JSON list, max 30 strings of 120 chars), `category` (integer ID), `source` (`commons`, `licensed`, `ai`, `manual`), `source_url` (HTTPS provenance required for commons/licensed), `license` (160 chars), `attribution` (500 chars), and exactly one of `external_image_url` or `image_file`. With multipart, encode accepted_synonyms as a JSON string. Upload limits: 8 MB, still JPEG/PNG/WebP, minimum 64 px per side, maximum 4096 px per side and 12 MP. Client-supplied status, reviewer, owner, and storage keys are never accepted as writable fields. Public catalog output includes only `id`, nested category metadata, and `created_at`.
 
 Throttle scopes: anonymous 120/hour, user 1200/hour, login/register 10/minute, image creation 20/day, reports 10/day. Scoped endpoints use their scope rather than both generic scopes. Configure trusted proxy count according to real infrastructure; the default trusts no forwarding headers. DRF cache throttles are non-atomic and provide only a baseline usage policy.
+
+## Account settings
+
+`/settings/account` extends the existing settings screen; `/settings` remains available for account notices. Login continues to use usernames.
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/auth/settings/` | Authenticated account; `{username, email, username_change_available, username_change_available_at}` |
+| POST | `/api/auth/change-username/` | `{new_username, current_password}` → `{settings}` |
+| POST | `/api/auth/change-email/` | `{new_email, current_password}` → `{settings}` |
+| POST | `/api/auth/change-password/` | `{current_password, new_password, password_confirm}` → `{settings}` |
+
+All three changes require account access, CSRF, and a fresh current-password check. Extra fields, including user IDs, privileges, and client timestamps, are rejected. The shared account-change scope allows 10 requests/minute per authenticated user across these operations; standard DRF cache throttling is a baseline, not an atomic distributed abuse defense. Responses are private/no-store. Failed validation changes no account data; database uniqueness conflicts return 400.
+
+Username eligibility is exactly `last_username_change + timedelta(days=90)` using server time. Registration starts the first cooldown. Migration `accounts.0003` backfills existing assignments from original `date_joined`; it does not reset them at migration or login. Account changes acquire a database writer lock before rereading the user, then validate and save atomically, including on SQLite. Case-only and canonically equivalent unchanged usernames are rejected. New registrations and username changes reject all whitespace (including leading/trailing whitespace, tabs, and newlines) and final hyphens/underscores, while preserving the existing 150-character limit and character rules. These checks also apply to new/changed usernames in administration; unchanged legacy usernames remain valid. Existing case-insensitive database uniqueness constraints remain in force. A cooldown rejection includes a human-readable explanation and `username_change_available_at`. Stable UUID relationships, ratings, history, and moderation records remain intact; old username profile links return a graceful 404.
+
+Email is normalized to lowercase and updated immediately with no verification or email delivery requirement. Username and email changes retain the session. Passwords must match confirmation exactly, pass Django's configured validators, and differ from the current password. Django hashes the new password and `update_session_auth_hash` rotates and preserves the current session. Other sessions for that account fail authentication on their next request/session check; unrelated accounts are unaffected. No session table is deleted wholesale. Passwords and confirmation are never included in responses.
+
+Registration now requires matching `password` and `password_confirm`; confirmation is write-only and removed before account creation. Trusted Django administration/UserManager creation does not require a confirmation field.
 
 Ranked is available for registered accounts. See [ranked rules and operation](ranked.md).
 

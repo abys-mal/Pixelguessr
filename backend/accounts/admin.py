@@ -1,17 +1,34 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.core.exceptions import ValidationError
 
 from .models import User, VerifiedTitle
+from .validators import validate_username_rules
 
 
-class CustomUserCreationForm(UserCreationForm):
+class UsernameRulesMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["username"].strip = False
+
+    def clean_username(self):
+        value = self.cleaned_data["username"]
+        # Unrelated admin edits must not reject a legacy trailing separator.
+        if self.instance._state.adding or value != self.instance.username:
+            validate_username_rules(value)
+        if User.objects.filter(username__iexact=value).exclude(pk=self.instance.pk).exists():
+            raise ValidationError("This username is unavailable.")
+        return value
+
+
+class CustomUserCreationForm(UsernameRulesMixin, UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("username", "email")
 
 
-class CustomUserChangeForm(UserChangeForm):
+class CustomUserChangeForm(UsernameRulesMixin, UserChangeForm):
     class Meta(UserChangeForm.Meta):
         model = User
 

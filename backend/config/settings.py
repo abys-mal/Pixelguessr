@@ -101,6 +101,7 @@ REST_FRAMEWORK = {
         "anon": "120/hour",
         "user": "1200/hour",
         "auth": "10/minute",
+        "account_change": "10/minute",
         "submission": "20/day",
         "report": "10/day",
         "csrf": "600/minute",

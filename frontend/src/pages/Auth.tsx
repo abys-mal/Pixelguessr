@@ -1,33 +1,54 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth/context';
 import { PageHeading, StatusMessage } from '../components/ui';
+import { UsernameRequirements } from '../components/UsernameRequirements';
 
 export function AuthPage({ register = false }: { register?: boolean }) {
   const { user, refresh, loading } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
   if (loading) return <StatusMessage>Checking your session…</StatusMessage>;
   if (user) return <Navigate to="/profile" replace />;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (request.current) return;
     setError('');
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form));
+    if (register && data.password !== data.password_confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    const controller = new AbortController();
+    request.current = controller;
     setPending(true);
-    const data = Object.fromEntries(new FormData(event.currentTarget));
     try {
       await api(`/api/auth/${register ? 'register' : 'login'}/`, {
         method: 'POST',
         body: JSON.stringify(data),
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
+      form.reset();
       await refresh();
-      navigate('/profile');
+      if (!controller.signal.aborted) navigate('/profile');
     } catch (error) {
+      if (controller.signal.aborted) return;
+      form.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach((input) => {
+        input.value = '';
+      });
       setError(error instanceof Error ? error.message : 'Unable to sign in.');
     } finally {
-      setPending(false);
+      if (!controller.signal.aborted) {
+        request.current = null;
+        setPending(false);
+      }
     }
   };
   return (
@@ -43,8 +64,15 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       <form className="panel form-stack" onSubmit={(event) => void submit(event)}>
         <label>
           Username
-          <input name="username" autoComplete="username" maxLength={150} required />
+          <input
+            name="username"
+            autoComplete="username"
+            maxLength={150}
+            required
+            aria-describedby={register ? 'registration-username-rules' : undefined}
+          />
         </label>
+        {register && <UsernameRequirements id="registration-username-rules" />}
         {register && (
           <>
             <label>
@@ -68,6 +96,19 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             required
           />
         </label>
+        {register && (
+          <label>
+            Confirm password
+            <input
+              type="password"
+              name="password_confirm"
+              autoComplete="new-password"
+              minLength={10}
+              maxLength={128}
+              required
+            />
+          </label>
+        )}
         {register && (
           <p className="field-help">
             Use at least 10 characters. Avoid common passwords and personal details.

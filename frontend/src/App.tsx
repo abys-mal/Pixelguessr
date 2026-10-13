@@ -28,6 +28,7 @@ export function App() {
         <Route path="login" element={<AuthPage key="login" />} />
         <Route path="register" element={<AuthPage key="register" register />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings/account" element={<Settings />} />
         <Route path="settings" element={<Settings />} />
         <Route path="library" element={<Library />} />
         <Route path="submit" element={<Submit />} />
