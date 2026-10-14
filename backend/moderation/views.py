@@ -32,10 +32,8 @@ class AcknowledgeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        sanction = get_object_or_404(
-            active_sanctions(request.user), pk=pk, kind=Sanction.Kind.WARNING
-        )
-        if not sanction.acknowledged_at:
-            sanction.acknowledged_at = timezone.now()
-            sanction.save(update_fields=["acknowledged_at"])
+        warnings = active_sanctions(request.user).filter(pk=pk, kind=Sanction.Kind.WARNING)
+        # One conditional write preserves the first acknowledgment under concurrent retries.
+        warnings.filter(acknowledged_at__isnull=True).update(acknowledged_at=timezone.now())
+        sanction = get_object_or_404(warnings)
         return Response(SanctionSerializer(sanction).data)

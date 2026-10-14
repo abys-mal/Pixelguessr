@@ -27,7 +27,7 @@ export function Profile() {
 }
 
 export function Settings() {
-  const { user, loading, signOut, refresh } = useAuth();
+  const { user, loading, refresh } = useAuth();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -121,22 +121,6 @@ export function Settings() {
               {notice.acknowledged_at && <p className="field-help">Acknowledged</p>}
             </article>
           ))}
-          <button
-            className="button secondary"
-            disabled={pending}
-            onClick={async () => {
-              setPending(true);
-              try {
-                await signOut();
-              } catch (error) {
-                setError((error as Error).message);
-              } finally {
-                setPending(false);
-              }
-            }}
-          >
-            Sign out
-          </button>
         </section>
       </div>
       {error && <StatusMessage error>{error}</StatusMessage>}

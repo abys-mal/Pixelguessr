@@ -1,4 +1,7 @@
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -43,12 +46,18 @@ class ImageSubmissionAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     def review(self, request, queryset, status):
-        review_images(queryset, request.user, status)
+        if not self.has_change_permission(request):
+            raise PermissionDenied("Image review requires change permission.")
+        with transaction.atomic():
+            queryset.update(status=F("status"))
+            review_images(queryset, request.user, status)
+            for image in queryset:
+                self.log_change(request, image, f"Reviewed submission: {status}.")
 
-    @admin.action(description="Approve selected submissions")
+    @admin.action(description="Approve selected submissions", permissions=["change"])
     def approve(self, request, queryset):
         self.review(request, queryset, ImageSubmission.Status.APPROVED)
 
-    @admin.action(description="Reject selected submissions")
+    @admin.action(description="Reject selected submissions", permissions=["change"])
     def reject(self, request, queryset):
         self.review(request, queryset, ImageSubmission.Status.REJECTED)

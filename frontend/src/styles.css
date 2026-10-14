@@ -2036,3 +2036,35 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+.profile-identity {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 100%;
+}
+.profile-identity-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.profile-identity .button {
+  flex-shrink: 0;
+}
+.history-outcome {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.history-outcome-win {
+  color: var(--mint);
+}
+.history-outcome-loss {
+  color: #ff858e;
+}
+.history-outcome-no_contest {
+  color: var(--muted);
+}
+
+.page-heading:has(.profile-identity) h1 {
+  overflow-wrap: anywhere;
+}

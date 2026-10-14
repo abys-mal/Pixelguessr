@@ -1,4 +1,4 @@
-# Pixelguessr API — through Phase 5.1
+# Pixelguessr API — through Phase 5.2
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
 
@@ -9,7 +9,7 @@ All paths have trailing slashes. JSON responses unless noted. Session cookies au
 | GET    | `/api/auth/csrf/`                               | Public masked CSRF token + cookie                                                             |
 | POST   | `/api/auth/register/`                           | CSRF required; username, email, password, password_confirm, optional display_name; creates session; 201         |
 | POST   | `/api/auth/login/`                              | CSRF required; username/password; creates session                                             |
-| POST   | `/api/auth/logout/`                             | Session + CSRF; 204                                                                           |
+| POST   | `/api/auth/logout/`                             | CSRF; idempotent current-session logout, including expired/blocked sessions; 204                                                                           |
 | GET    | `/api/auth/me/`                                 | Public; `{user: null, restrictions: null}` for guests, private user/restrictions for accounts |
 | PATCH  | `/api/auth/me/`                                 | Account access + CSRF; only display_name editable                                             |
 | GET    | `/api/auth/profiles/<username>/`                | Public profile without email or rating                                                        |
@@ -47,6 +47,8 @@ Username eligibility is exactly `last_username_change + timedelta(days=90)` usin
 Email is normalized to lowercase and updated immediately with no verification or email delivery requirement. Username and email changes retain the session. Passwords must match confirmation exactly, pass Django's configured validators, and differ from the current password. Django hashes the new password and `update_session_auth_hash` rotates and preserves the current session. Other sessions for that account fail authentication on their next request/session check; unrelated accounts are unaffected. No session table is deleted wholesale. Passwords and confirmation are never included in responses.
 
 Registration now requires matching `password` and `password_confirm`; confirmation is write-only and removed before account creation. Trusted Django administration/UserManager creation does not require a confirmation field.
+
+Moderation uses the existing Django Admin and model permissions; there is no custom React moderation console or report form. See [moderation/admin testing and role setup](moderation-audit.md). Reports remain separate records up to the 10/day throttle. Sanction revocation and image review require model change permission and write Admin History. Only superusers can delegate roles/groups or reverse closure. Cosmetic titles confer no privileges.
 
 Ranked is available for registered accounts. See [ranked rules and operation](ranked.md).
 

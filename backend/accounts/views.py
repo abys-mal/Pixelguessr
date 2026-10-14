@@ -70,9 +70,10 @@ class LoginView(APIView):
         return Response({"user": UserSerializer(user).data})
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class LogoutView(APIView):
-    # Suspended accounts must still be able to end their session.
-    permission_classes = [IsAuthenticated]
+    # Flush the current cookie session even when authentication expired or was blocked.
+    permission_classes = [AllowAny]
 
     def post(self, request):
         logout(request)

@@ -657,3 +657,45 @@ def test_registered_start_uses_cookie_session_identity(hosted, client, user):
     assert start(client, request_id).status_code == 201
     assert start(client).status_code == 409
     assert Match.objects.filter(participants__user=user, mode="singleplayer").count() == 1
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation"])
+def test_singleplayer_remains_available_for_nonblocking_notices(
+    hosted, clock, client, user, staff, kind
+):
+    from moderation.models import Sanction
+
+    Sanction.objects.create(
+        user=user,
+        issued_by=staff,
+        kind=kind,
+        category="fair_play",
+        reason="Solo policy",
+        starts_at=clock["now"],
+    )
+    client.force_login(user)
+    result = start(client)
+    assert result.status_code == 201
+    assert guess(client, result.json()["round"]["id"], "balloon").status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["suspension", "closed"])
+def test_blocked_cookie_session_cannot_recover_owned_solo_game(
+    hosted, clock, client, user, staff, kind
+):
+    from moderation.models import Sanction
+
+    client.force_login(user)
+    round_id = start(client).json()["round"]["id"]
+    Sanction.objects.create(
+        user=user,
+        issued_by=staff,
+        kind=kind,
+        category="fair_play",
+        reason="Solo session audit",
+        starts_at=clock["now"],
+    )
+    assert client.get(BASE + f"rounds/{round_id}/").status_code == 404
+    assert guess(client, round_id, "balloon").status_code == 404
+    # The existing guest mode remains public; account/session bans are not device bans.
+    assert start(APIClient()).status_code == 201

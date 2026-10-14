@@ -669,40 +669,48 @@ async def test_authenticated_ranked_sockets_and_session_revocation(images, user,
             ],
         )
 
+    async def receive_reply(stream, expected):
+        # State broadcasts may precede request replies on the same socket.
+        for _ in range(8):
+            message = await stream.receive_json_from(timeout=3)
+            if message["type"] == expected:
+                return message
+            assert message["type"] == "state", message
+        raise AssertionError(f"Missing {expected} reply")
+
     a, b = socket(cookie), socket(friend_cookie)
-    assert (await a.connect())[0] and (await b.connect())[0]
-    first = (await a.receive_json_from())["state"]
-    second = (await b.receive_json_from())["state"]
-    assert first["round"]["started_at"] == second["round"]["started_at"]
-    assert first["round"]["completion"] is None
-    await a.send_json_to({"type": "clock", "token": "latency-sample"})
-    timing = await a.receive_json_from()
-    assert timing == {
-        "type": "clock",
-        "token": "latency-sample",
-        "server_now": clock["now"].isoformat(),
-    }
-    advance(clock, 3, heartbeat=False)
-    await a.send_json_to(
-        {
-            "type": "guess",
-            "round_id": first["round"]["id"],
-            "guess": "wrong",
-            "request_id": str(uuid.uuid4()),
+    try:
+        assert (await a.connect())[0] and (await b.connect())[0]
+        first = (await a.receive_json_from())["state"]
+        second = (await b.receive_json_from())["state"]
+        assert first["round"]["started_at"] == second["round"]["started_at"]
+        assert first["round"]["completion"] is None
+        await a.send_json_to({"type": "clock", "token": "latency-sample"})
+        timing = await receive_reply(a, "clock")
+        assert timing == {
+            "type": "clock",
+            "token": "latency-sample",
+            "server_now": clock["now"].isoformat(),
         }
-    )
-    reply = await a.receive_json_from()
-    assert reply["type"] == "guess_result" and reply["result"] == "incorrect"
-    await database_sync_to_async(lambda: Session.objects.filter(session_key=cookie).delete())()
-    while True:
-        message = await a.receive_json_from(timeout=3)
-        if message["type"] == "access_denied":
-            break
-    assert message["status"] == 403
-    peer = (await b.receive_json_from(timeout=3))["state"]
-    assert "wrong" not in json.dumps(peer) and peer["round"]["completion"] is None
-    await a.disconnect()
-    await b.disconnect()
+        advance(clock, 3, heartbeat=False)
+        await a.send_json_to(
+            {
+                "type": "guess",
+                "round_id": first["round"]["id"],
+                "guess": "wrong",
+                "request_id": str(uuid.uuid4()),
+            }
+        )
+        reply = await receive_reply(a, "guess_result")
+        assert reply["type"] == "guess_result" and reply["result"] == "incorrect"
+        await database_sync_to_async(lambda: Session.objects.filter(session_key=cookie).delete())()
+        message = await receive_reply(a, "access_denied")
+        assert message["status"] == 403
+        peer = (await b.receive_json_from(timeout=3))["state"]
+        assert "wrong" not in json.dumps(peer) and peer["round"]["completion"] is None
+    finally:
+        await a.disconnect()
+        await b.disconnect()
 
 
 def test_shared_reveal_frames_match_snapshots_and_cache_permissions(
@@ -888,3 +896,87 @@ def test_read_only_polls_race_with_a_correct_guess(images, user, opponent, clock
         assert player["wins"] == int(snapshot["round"]["status"] == "results")
         assert (snapshot["round"]["completion"] is not None) == (player["wins"] == 1)
     assert ranked.state(opponent, game.pk)["round"]["status"] == "results"
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
+def test_sanction_imposed_during_queue_removes_search_without_match(images, user, staff, kind):
+    from moderation.models import Sanction
+
+    ranked.queue_join(user, uuid.uuid4())
+    Sanction.objects.create(
+        user=user, issued_by=staff, kind=kind, category="fair_play", reason="Queue audit"
+    )
+    ranked.clock_tick()
+    assert not RankedQueue.objects.filter(user=user, queued_at__isnull=False).exists()
+    assert not Match.objects.filter(mode="ranked").exists()
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
+def test_active_ranked_sanction_blocks_guesses_and_existing_images(
+    game, user, staff, opponent, clock, client, kind
+):
+    from moderation.models import Sanction
+
+    advance(clock, 4)
+    client.force_authenticate(user)
+    frame = ranked.state(user, game.pk)["round"]["image_url"]
+    assert client.get(frame).status_code == 200
+    Sanction.objects.create(
+        user=user, issued_by=staff, kind=kind, category="fair_play", reason="Active audit"
+    )
+    assert client.get(frame).status_code == 403
+    before = RoundPlayerState.objects.filter(
+        round__match=game, ranked_guessed_at__isnull=False
+    ).count()
+    with pytest.raises(APIException):
+        submit(user, game)
+    assert (
+        RoundPlayerState.objects.filter(round__match=game, ranked_guessed_at__isnull=False).count()
+        == before
+    )
+    assert ranked.state(opponent, game.pk)["status"] == "active"
+    user.refresh_from_db()
+    assert user.rating == 1000
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+@pytest.mark.asyncio
+async def test_live_ranked_socket_revokes_access_when_suspended(game, user, staff, client, clock):
+    from channels.db import database_sync_to_async
+
+    from config.asgi import application
+    from moderation.models import Sanction
+
+    def login_cookie():
+        client.force_login(user)
+        return client.cookies["sessionid"].value
+
+    cookie = await database_sync_to_async(login_cookie)()
+    socket = WebsocketCommunicator(
+        application,
+        f"/ws/matches/{game.pk}/",
+        headers=[
+            (b"origin", b"http://localhost:5173"),
+            (b"cookie", f"sessionid={cookie}".encode()),
+        ],
+    )
+    try:
+        accepted, _ = await socket.connect()
+        assert accepted
+        assert (await socket.receive_json_from())["type"] == "state"
+        await database_sync_to_async(Sanction.objects.create)(
+            user=user,
+            issued_by=staff,
+            kind="suspension",
+            category="fair_play",
+            reason="Socket audit",
+            starts_at=clock["now"],
+        )
+        for _ in range(8):
+            message = await socket.receive_json_from(timeout=2)
+            if message["type"] == "access_denied":
+                break
+        assert message["type"] == "access_denied"
+        assert (await socket.receive_output(timeout=2))["code"] == 4403
+    finally:
+        await socket.disconnect()

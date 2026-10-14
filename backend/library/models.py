@@ -44,7 +44,7 @@ class ImageSubmission(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="image_submissions"
     )
     canonical_answer = models.CharField(max_length=120)
-    accepted_synonyms = models.JSONField(default=list, validators=[validate_synonyms])
+    accepted_synonyms = models.JSONField(default=list, blank=True, validators=[validate_synonyms])
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     source = models.CharField(max_length=12, choices=Source)
     source_url = models.URLField(max_length=1000, blank=True)
@@ -80,6 +80,10 @@ class ImageSubmission(models.Model):
         ]
 
     def clean(self):
+        try:
+            validate_synonyms(self.accepted_synonyms)
+        except ValidationError as exc:
+            raise ValidationError({"accepted_synonyms": exc.messages}) from exc
         if bool(self.image_file) == bool(self.external_image_url):
             raise ValidationError("Provide exactly one uploaded image or external reference.")
         if self.status != self.Status.PENDING and (not self.reviewed_by_id or not self.reviewed_at):

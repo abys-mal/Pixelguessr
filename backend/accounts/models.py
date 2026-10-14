@@ -57,5 +57,15 @@ class VerifiedTitle(models.Model):
     def clean(self):
         from django.core.exceptions import ValidationError
 
-        if self.verified_by_id and not self.verified_by.is_staff:
+        previous = (
+            type(self)
+            .objects.using(self._state.db or "default")
+            .filter(pk=self.pk)
+            .values("verified_by_id")
+            .first()
+            if not self._state.adding
+            else None
+        )
+        verifier_changed = previous is None or previous["verified_by_id"] != self.verified_by_id
+        if verifier_changed and self.verified_by_id and not self.verified_by.is_staff:
             raise ValidationError({"verified_by": "Verification requires a staff member."})

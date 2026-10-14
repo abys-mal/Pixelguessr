@@ -94,9 +94,25 @@ class Sanction(models.Model):
             self.expires_at = self.starts_at + timedelta(days=90)
         if self.kind == self.Kind.CLOSED and self.expires_at:
             raise ValidationError({"expires_at": "Account closure has no expiry."})
-        if self.issued_by_id and not self.issued_by.is_staff:
+        original = (
+            type(self)
+            .objects.using(self._state.db or "default")
+            .filter(pk=self.pk)
+            .values("issued_by_id", "revoked_by_id", "revoked_at")
+            .first()
+            if not self._state.adding
+            else None
+        )
+        # Authorization belongs to the action time; later role removal preserves history.
+        issuer_changed = original is None or original["issued_by_id"] != self.issued_by_id
+        revocation_changed = (
+            original is None
+            or original["revoked_by_id"] != self.revoked_by_id
+            or original["revoked_at"] != self.revoked_at
+        )
+        if issuer_changed and self.issued_by_id and not self.issued_by.is_staff:
             raise ValidationError({"issued_by": "Sanctions require staff authorization."})
-        if self.revoked_by_id:
+        if revocation_changed and self.revoked_by_id:
             if not self.revoked_by.is_staff:
                 raise ValidationError({"revoked_by": "Revocation requires staff authorization."})
             if self.kind == self.Kind.CLOSED and not self.revoked_by.is_superuser:

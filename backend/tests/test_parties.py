@@ -966,3 +966,41 @@ def test_registered_party_creation_uses_cookie_session_identity(client, user):
     party = Party.objects.get(code=response.json()["code"])
     assert party.host.user_id == user.pk
     assert party.host.guest_id is None
+
+
+@pytest.mark.parametrize("kind", ["warning", "suspension", "closed"])
+def test_active_party_sanction_blocks_account_actions_and_uses_existing_host_grace(
+    client, images, user, staff, clock, kind
+):
+    from moderation.models import Sanction
+
+    client.force_login(user)
+    created = create(client).json()
+    code = created["code"]
+    other = APIClient()
+    assert join(other, code).status_code == 200
+    round_id = action(client, code, "start").json()["round"]["id"]
+    advance_time(clock, 3)
+    Sanction.objects.create(
+        user=user, issued_by=staff, kind=kind, category="fair_play", reason="Party audit"
+    )
+    assert client.get(BASE + code + "/").status_code in [403, 404]
+    assert guess(client, code, round_id, answer(round_id)).status_code in [403, 404]
+    assert client.get(BASE + code + f"/rounds/{round_id}/image/").status_code in [403, 404]
+    assert not Guess.objects.filter(round_id=round_id).exists()
+    advance_time(clock, 40, heartbeat=False)
+    clock_tick()
+    result = state(other, code)
+    assert result["status"] == "aborted" and result["end_reason"] == "host_disconnected"
+    user.refresh_from_db()
+    assert user.rating == 1000
+
+
+def test_probation_preserves_party_access_under_existing_policy(client, user, staff):
+    from moderation.models import Sanction
+
+    Sanction.objects.create(
+        user=user, issued_by=staff, kind="probation", category="fair_play", reason="Party policy"
+    )
+    client.force_login(user)
+    assert create(client).status_code == 201

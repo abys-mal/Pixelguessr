@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Page, type User } from '../api';
 import { Badge, PageHeading, StatusMessage } from '../components/ui';
+import { useAuth } from '../auth/context';
 import { rankedApi, type Standing, type HistoryEntry } from '../games/ranked';
 export function Pagination({
   page,
@@ -127,6 +128,24 @@ export function Leaderboards() {
   );
 }
 export function RankedProfile({ username, own }: { username: string; own: boolean }) {
+  const { signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+  const logoutRequest = useRef(false);
+  const logout = async () => {
+    if (logoutRequest.current) return;
+    logoutRequest.current = true;
+    setSigningOut(true);
+    setLogoutError('');
+    try {
+      await signOut();
+    } catch (error) {
+      setLogoutError((error as Error).message);
+    } finally {
+      logoutRequest.current = false;
+      setSigningOut(false);
+    }
+  };
   const [profile, setProfile] = useState<Omit<User, 'email'> | null>(null);
   const [history, setHistory] = useState<Page<HistoryEntry> | null>(null);
   const [page, setPage] = useState(1);
@@ -156,8 +175,21 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
   return (
     <>
       <PageHeading eyebrow="A PLACE IN THE GRID" title={profile.display_name || profile.username}>
-        @{profile.username}
+        <span className="profile-identity">
+          <span className="profile-identity-name">@{profile.username}</span>
+          {own && (
+            <button
+              className="button compact secondary"
+              type="button"
+              disabled={signingOut}
+              onClick={() => void logout()}
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          )}
+        </span>
       </PageHeading>
+      {logoutError && <StatusMessage error>{logoutError}</StatusMessage>}
       <section className="panel profile-panel">
         <div className="avatar" aria-hidden="true">
           {(profile.display_name || profile.username).slice(0, 1).toUpperCase()}
@@ -201,11 +233,9 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
                     </Link>
                   </td>
                   <td>
-                    {entry.outcome === 'no_contest'
-                      ? 'No Contest'
-                      : entry.outcome === 'win'
-                        ? 'Win'
-                        : 'Loss'}
+                    <span className={`history-outcome history-outcome-${entry.outcome}`}>
+                      {entry.outcome === 'no_contest' ? 'NO CONTEST' : entry.outcome.toUpperCase()}
+                    </span>
                     {entry.forfeit && ' · Forfeit'}
                   </td>
                   <td>
