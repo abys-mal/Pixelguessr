@@ -1,4 +1,9 @@
-# Pixelguessr · Phase 4
+# Pixelguessr
+
+Native moderation and player appeals are implemented at `/moderation` and
+`/account-notices`. See [native moderation setup, access and workflows](docs/native-moderation.md).
+Only administrators (active superusers) can enter Django Admin; moderators use the
+native workspace with `moderation.access_workspace` permission.
 
 A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 4 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
 
@@ -26,7 +31,7 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 - ASGI and Channels/Redis routing. `/ws/parties/<code>/` provides real party sessions; `/ws/matches/<uuid>/` provides private ranked sessions, with `/ws/ranked/queue/<ticket>/` for matchmaking. `/api/modes/` reports all three modes available.
 - Public Elo, derived tiers, wins/losses/rated counts and completed ranked history. Leaderboards require at least one rated match; No Contests do not qualify.
 - Future phases: production load testing and operations, matchmaking throughput and image-compositor optimization.
-- Later account work: email verification, email/password changes and recovery, full appeals, and operational production deployment. No party chat is planned for V1.
+- Username/email/password changes and sanction appeals are implemented. Later account work: email verification, password recovery, and operational production deployment. No party chat is planned for V1.
 
 ## Start locally without Docker
 
@@ -103,7 +108,7 @@ Create a superuser, log into Django Admin, and open Image submissions. Inspect m
 
 For S3-compatible hosted storage, set `USE_S3=True`, `S3_BUCKET_NAME`, and `S3_REGION_NAME`. Set `S3_ENDPOINT_URL` for a compatible provider. Use IAM workload credentials where available, or the optional `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` environment variables. Keep bucket public access blocked; there is no public ACL or public media route. Staff previews stream through authorized Django views. Changing storage does not migrate existing files. An actual bucket connection requires your infrastructure/credentials and is not covered by local tests.
 
-Sanctions may be issued independently without escalation. Existing sanctions are immutable in Admin; the audited Revoke action permits early lifting (including a successful appeal recorded by staff). Full appeal intake is deferred. Reports currently require an authenticated account; guest reporting is deferred. See [the moderation/admin browser checklist](docs/moderation-audit.md) for isolated test setup, least-privilege roles, reporting, sanctions, audit history, and expected results. Staff need the corresponding model permissions; only superusers can delegate roles/group permissions. Profile Sign Out uses the existing CSRF-protected logout endpoint and also works after session expiry. New titles can supersede an existing verified title and are not derived automatically from rating.
+Sanctions may be issued independently without escalation. Moderators use the [native workspace](docs/native-moderation.md) to issue, reverse or replace sanctions and review player appeals. Only administrators can enter Django Admin, manage access, moderate staff or reverse closures. Original sanction records remain intact; replacements are linked records. Reports require an authenticated account; guest reporting is deferred. The [older Admin audit checklist](docs/moderation-audit.md) retains historical verification context; the native workspace guide contains current roles and workflows. Profile Sign Out uses the existing CSRF-protected logout endpoint and also works after session expiry. New titles can supersede an existing verified title and are not derived automatically from rating.
 
 ## Before production
 

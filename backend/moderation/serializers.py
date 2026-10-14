@@ -16,6 +16,11 @@ class ReportSerializer(serializers.ModelSerializer):
 
 
 class SanctionSerializer(serializers.ModelSerializer):
+    reason = serializers.SerializerMethodField()
+
+    def get_reason(self, obj):
+        return obj.reason or "A moderation notice has been applied to your account."
+
     class Meta:
         model = Sanction
         fields = ["id", "category", "kind", "reason", "starts_at", "expires_at", "acknowledged_at"]

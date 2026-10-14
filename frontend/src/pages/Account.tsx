@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { AccountSecurity } from './AccountSecurity';
 import { RankedProfile } from './RankedPublic';
 import { api } from '../api';
@@ -99,6 +99,9 @@ export function Settings() {
         </form>
         <section className="panel">
           <h2>Account notices</h2>
+          <p>
+            <Link to="/account-notices">Review notices & appeals →</Link>
+          </p>
           {notices.length === 0 && <p className="muted">No active account notices.</p>}
           {notices.map((notice) => (
             <article className="notice" key={notice.id}>

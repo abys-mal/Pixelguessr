@@ -1,4 +1,6 @@
 export interface User {
+  moderation_access?: boolean;
+  administrator?: boolean;
   id: string;
   username: string;
   email: string;

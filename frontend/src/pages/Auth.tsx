@@ -120,6 +120,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           <span aria-hidden="true">↗</span>
         </button>
         <p className="form-footer">
+          {!register && (
+            <>
+              <Link to="/account-notices">Account restricted? Review notices & appeals</Link>
+              <br />
+            </>
+          )}
           {register ? 'Already part of the picture? ' : 'New here? '}
           <Link to={register ? '/login' : '/register'}>
             {register ? 'Sign in' : 'Create an account'}

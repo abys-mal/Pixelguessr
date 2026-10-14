@@ -11,11 +11,18 @@ from .validators import validate_username_rules
 
 
 class UserSerializer(serializers.ModelSerializer):
+    moderation_access = serializers.SerializerMethodField()
+    administrator = serializers.BooleanField(source="is_superuser", read_only=True)
     title = serializers.SerializerMethodField()
     ranked_tier = serializers.SerializerMethodField()
 
     def get_ranked_tier(self, obj):
         return tier(obj.rating)
+
+    def get_moderation_access(self, obj):
+        from moderation.permissions import is_moderator
+
+        return is_moderator(obj)
 
     class Meta:
         model = User
@@ -31,6 +38,8 @@ class UserSerializer(serializers.ModelSerializer):
             "ranked_losses",
             "title",
             "date_joined",
+            "moderation_access",
+            "administrator",
         ]
         read_only_fields = fields
 

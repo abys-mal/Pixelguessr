@@ -1,4 +1,32 @@
-# Pixelguessr API — through Phase 5.2
+# Pixelguessr API
+
+## Native moderation and appeals
+
+All paths below are under `/api/moderation/`. Mutations use existing same-origin
+session cookies and CSRF. Workspace responses are private and non-cacheable.
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `workspace/` | GET | Authorized pending report/appeal counts and administrator capability |
+| `workspace/players/?q=&page=` | GET | Paginated case-insensitive username search |
+| `workspace/players/<uuid>/` | GET | Account, sanctions, reports, appeals and activity |
+| `workspace/players/<uuid>/sanctions/` | POST | Issue: kind, category, optional reason/internal_note/expires_at |
+| `workspace/sanctions/<uuid>/reverse/` | POST | Reverse an active sanction |
+| `workspace/sanctions/<uuid>/replace/` | POST | Atomic reversal plus linked replacement; same payload as issuance |
+| `workspace/reports/?status=pending&page=` | GET | Report inbox; `status=all` includes history |
+| `workspace/reports/<uuid>/resolve/` | POST | `decision`: resolved or dismissed |
+| `workspace/appeals/?status=pending&page=` | GET | Appeal inbox; `status=all` includes history |
+| `workspace/appeals/<uuid>/resolve/` | POST | `decision`: uphold or reverse |
+| `workspace/players/<uuid>/access/` | POST | Administrator-only `enabled` boolean, with audit |
+| `notice-login/` | POST | Username/password proof valid for 15 minutes; no game login |
+| `notices/` | GET / DELETE | Own public notices and appeal history / end limited proof |
+| `sanctions/<uuid>/appeal/` | POST | Own active sanction; required explanation, max 4000 characters |
+
+Workspace access requires the application permission or active superuser status.
+Non-administrators cannot view/moderate staff or reverse/replace closures. Player
+notices and appeal serializers exclude internal notes and staff audit data.
+Appeal eligibility includes its reason and next cooldown date. Existing report
+creation, privacy, warning acknowledgment and throttling contracts remain intact.
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
 

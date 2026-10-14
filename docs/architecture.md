@@ -1,5 +1,15 @@
 # Architecture
 
+Native moderation uses the existing `moderation` app with a dedicated React
+layout at `/moderation`. Application permission `moderation.access_workspace`
+grants moderator access without Django Admin; only active superusers enter Admin.
+Sanction/appeal/report/access commands use per-player first-write locking and
+append audit activity. Sanction replacements reverse and link rather than edit
+history. `/account-notices` supports the normal account session and a separate
+15-minute password-bound notices-only proof for suspended accounts. That proof
+is accepted only by notices/appeals endpoints, never by game authentication.
+See [current moderation workflows](native-moderation.md).
+
 One Django application and one React application. Local Phase 3 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. A lightweight `party_clock` management process advances unattended parties; no external task queue is needed.
 
 ```text

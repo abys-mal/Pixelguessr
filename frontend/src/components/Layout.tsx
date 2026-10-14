@@ -31,6 +31,7 @@ export function Layout() {
           </NavLink>
           <NavLink to="/library">Image library</NavLink>
           <NavLink to="/leaderboards">Leaderboards</NavLink>
+          {user?.moderation_access && <NavLink to="/moderation">Mod Panel</NavLink>}
         </nav>
         <div className="account-nav">
           {user ? (

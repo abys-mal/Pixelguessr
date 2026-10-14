@@ -4,24 +4,40 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from .models import Report, Sanction
+from .models import Activity, Report, Sanction
 
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     list_display = ("subject", "reporter", "category", "created_at", "resolved_at")
     list_filter = ("category", "resolved_at")
-    readonly_fields = ("reporter", "subject", "category", "details", "created_at")
+    readonly_fields = ("reporter", "subject", "category", "details", "created_at", "resolved_by")
 
     def has_add_permission(self, request):
         return False  # Report identity/content must come from the validated player API.
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # Reports and their context are retained as moderation history.
+
+    def save_model(self, request, obj, form, change):
+        if (
+            change
+            and {"resolved_at", "resolution"}.intersection(form.changed_data)
+            and obj.resolved_at
+        ):
+            obj.resolved_by = request.user
+            obj.resolution = obj.resolution or "resolved"
+            Activity.objects.create(
+                user=obj.subject, actor=request.user, action="report_" + obj.resolution, report=obj
+            )
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Sanction)
 class SanctionAdmin(admin.ModelAdmin):
     list_display = ("user", "kind", "category", "starts_at", "expires_at", "revoked_at")
     list_filter = ("kind", "category")
-    readonly_fields = ("issued_by", "acknowledged_at", "revoked_at", "revoked_by")
+    readonly_fields = ("issued_by", "acknowledged_at", "revoked_at", "revoked_by", "replaces")
     actions = ["revoke"]
 
     def has_delete_permission(self, request, obj=None):
@@ -44,7 +60,14 @@ class SanctionAdmin(admin.ModelAdmin):
     def revoke(self, request, queryset):
         if not self.has_change_permission(request):
             raise PermissionDenied("Sanction changes require change permission.")
+        user_ids = sorted(set(queryset.values_list("user_id", flat=True)))
         with transaction.atomic():
+            from accounts.models import User
+
+            for user_id in user_ids:
+                User.objects.filter(pk=user_id).update(
+                    last_username_change=F("last_username_change")
+                )
             # Lock before mutable reads, including on SQLite; repeat actions are no-ops.
             queryset.update(revoked_at=F("revoked_at"))
             if (

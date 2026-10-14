@@ -1,5 +1,10 @@
 # Pixelguessr moderation/admin browser checklist
 
+This is the historical Phase 5.2 checklist. Native moderation now replaces the
+moderator Admin workflow: only active superusers may enter Django Admin. Use
+[native moderation](native-moderation.md) for current roles, appeal rules, setup
+and manual verification. Existing historical audit results remain relevant.
+
 This checklist uses the existing project, Django Admin, session authentication, and model permissions. It creates a disposable database and image directory; it does not clone the project or modify the development database. Use only the `audit_` accounts below for sanctions and role changes.
 
 ## Start an isolated local instance

@@ -118,12 +118,14 @@ def test_report_admin_permissions_resolution_and_audit(client, user, staff):
     assert client.get(f"/admin/moderation/report/{report.pk}/change/").status_code == 302
     staff = grant(staff, "moderation.view_report")
     client.force_login(staff)
-    assert client.get(f"/admin/moderation/report/{report.pk}/change/").status_code == 200
+    assert client.get(f"/admin/moderation/report/{report.pk}/change/").status_code == 302
     assert (
         client.post(f"/admin/moderation/report/{report.pk}/change/", {"_save": "Save"}).status_code
-        == 403
+        == 302
     )
     staff = grant(staff, "moderation.change_report")
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     client.force_login(staff)
     now = timezone.now()
     response = client.post(
@@ -212,7 +214,7 @@ def test_closure_revoke_batch_is_atomic_and_admin_only(client, user, staff):
         "/admin/moderation/sanction/",
         {"action": "revoke", "index": "0", "_selected_action": [str(warning.pk), str(closed.pk)]},
     )
-    assert response.status_code == 403
+    assert response.status_code == 302  # Staff can only use the native workspace.
     assert not Sanction.objects.filter(revoked_at__isnull=False).exists()
     # Neither setting is_active nor a direct acknowledgment reopens a closure.
     user.is_active = True
@@ -325,6 +327,8 @@ def test_history_classifies_supported_outcomes_without_inventing_draws(
 
 
 def test_malicious_report_details_are_escaped_in_admin(client, user, staff):
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     report = Report.objects.create(
         reporter=user, subject=staff, category="fair_play", details="<script>alert(1)</script>"
     )
@@ -337,6 +341,8 @@ def test_malicious_report_details_are_escaped_in_admin(client, user, staff):
 
 
 def test_invalid_sanction_expiry_returns_form_error_without_partial_storage(client, user, staff):
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     staff = grant(staff, "moderation.add_sanction")
     client.force_login(staff)
     now = timezone.now()

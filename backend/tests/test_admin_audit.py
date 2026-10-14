@@ -121,7 +121,7 @@ def test_moderator_cannot_promote_player_or_edit_privileged_accounts(
                     "password2": "another-test-password",
                 },
             ).status_code
-            == 403
+            == 302
         )
     response = client.post(
         f"/admin/accounts/user/{user.pk}/change/",
@@ -158,7 +158,7 @@ def test_moderator_cannot_expand_group_permissions(client, staff):
         f"/admin/auth/group/{group.pk}/change/",
         {"name": group.name, "permissions": str(escalated.pk), "_save": "Save"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 302  # Non-administrators cannot enter Django Admin.
     assert not group.permissions.exists()
 
 
@@ -189,6 +189,8 @@ def test_logout_is_idempotent_and_csrf_protected_for_stale_sessions(user, staff,
 
 
 def test_revoke_logs_actor_target_and_remains_idempotent(client, user, staff):
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     staff = grant(staff, "moderation.view_sanction", "moderation.change_sanction")
     warning = notice(user, staff)
     client.force_login(staff)
@@ -208,6 +210,8 @@ def test_revoke_logs_actor_target_and_remains_idempotent(client, user, staff):
 
 @pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
 def test_admin_issues_sanction_with_server_owned_actor_and_addition_log(client, user, staff, kind):
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     staff = grant(staff, "moderation.add_sanction", "moderation.view_sanction")
     client.force_login(staff)
     now = timezone.now()
