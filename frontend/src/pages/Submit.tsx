@@ -14,10 +14,7 @@ export function Submit() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loaded, setLoaded] = useState(false);
-  const restricted =
-    restrictions?.blocked ||
-    restrictions?.probation ||
-    Boolean(restrictions?.unacknowledged_warnings.length);
+  const restricted = restrictions?.blocked || restrictions?.probation || restrictions?.suspension;
   useEffect(() => {
     if (user && !restricted)
       void Promise.all([

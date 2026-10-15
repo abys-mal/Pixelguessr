@@ -11,10 +11,7 @@ class AccountAccess(BasePermission):
 
         restrictions = account_restrictions(request.user)
         if restrictions["blocked"]:
-            self.message = "This account is suspended or closed."
-            return False
-        if restrictions["unacknowledged_warnings"]:
-            self.message = "Acknowledge your account warning before continuing."
+            self.message = "Your account has been closed."
             return False
         return True
 
@@ -25,7 +22,8 @@ class CanSubmitImages(AccountAccess):
             return False
         from moderation.services import account_restrictions
 
-        if account_restrictions(request.user)["probation"]:
-            self.message = "Image submissions are disabled during probation."
+        restrictions = account_restrictions(request.user)
+        if restrictions["probation"] or restrictions["suspension"]:
+            self.message = "Image submissions are unavailable during probation or suspension."
             return False
         return True

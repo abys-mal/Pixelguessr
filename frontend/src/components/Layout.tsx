@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/context';
 
 export function Layout() {
-  const { user, error, refresh, restrictions } = useAuth();
+  const { user, error, refresh, account_closed, closure_message } = useAuth();
   const { pathname } = useLocation();
   const main = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -51,12 +51,11 @@ export function Layout() {
           <button onClick={() => void refresh()}>Retry</button>
         </div>
       )}
-      {restrictions &&
-        (restrictions.probation || restrictions.unacknowledged_warnings.length > 0) && (
-          <div className="service-banner">
-            Your account has a moderation notice. <Link to="/settings">Review account notices</Link>
-          </div>
-        )}
+      {account_closed && (
+        <div className="service-banner" role="alert">
+          {closure_message || 'Your account has been closed.'}
+        </div>
+      )}
       <main id="main" ref={main} tabIndex={-1}>
         <Outlet />
       </main>

@@ -1,3 +1,4 @@
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -364,28 +365,32 @@ def test_role_management_and_immediate_revocation(client, moderator, administrat
     assert client.get(ROOT).status_code == 403
 
 
-def test_suspended_notice_login_has_no_game_or_workspace_privileges(user, moderator):
+def test_suspended_normal_login_and_authenticated_appeals(user, moderator):
     suspension = sanction(moderator, user, "suspension", internal_note="SECRET")
     client = APIClient(enforce_csrf_checks=True)
     credentials = {"username": user.username, "password": "a-strong-unique-pass-734"}
     assert (
-        client.post("/api/moderation/notice-login/", credentials, format="json").status_code == 403
+        client.post("/api/moderation/notice-login/", credentials, format="json").status_code == 404
     )
 
     def csrf():
         return {"HTTP_X_CSRFTOKEN": client.get("/api/auth/csrf/").json()["csrfToken"]}
 
-    assert (
-        client.post(
-            "/api/moderation/notice-login/", credentials, format="json", **csrf()
-        ).status_code
-        == 200
-    )
-    assert client.get("/api/auth/me/").json()["user"] is None
+    assert client.post("/api/auth/login/", credentials, format="json", **csrf()).status_code == 200
+    assert client.get("/api/auth/me/").json()["user"]["id"] == str(user.pk)
+    assert client.get("/api/auth/settings/").status_code == 200
     notices = client.get("/api/moderation/notices/")
     assert notices.status_code == 200 and b"SECRET" not in notices.content
     assert client.get(ROOT).status_code == 403
-    assert client.post("/api/ranked/queue/", {}, format="json", **csrf()).status_code == 403
+    assert (
+        client.post(
+            "/api/ranked/queue/",
+            {"request_id": str(uuid.uuid4())},
+            format="json",
+            **csrf(),
+        ).status_code
+        == 403
+    )
     assert (
         client.post(
             f"/api/moderation/sanctions/{suspension.pk}/appeal/",
@@ -403,10 +408,7 @@ def test_suspended_notice_login_has_no_game_or_workspace_privileges(user, modera
         ).status_code
         == 201
     )
-    proof = client.session
-    proof["notice_access"]["time"] -= 901
-    proof.save()
-    assert client.get("/api/moderation/notices/").status_code == 403
+    assert "notice_access" not in client.session
 
 
 def test_foreign_appeal_empty_explanation_and_csrf(client, moderator, user):

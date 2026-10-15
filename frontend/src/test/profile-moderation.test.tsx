@@ -58,16 +58,24 @@ beforeEach(() => {
           username_change_available: true,
           username_change_available_at: '2026-04-01T00:00:00Z',
         };
-      if (path === '/api/moderation/sanctions/')
+      if (path === '/api/moderation/notices/')
         return {
-          count: 1,
-          results: [
+          appeals: [],
+          sanctions: [
             {
               id: 'warning-id',
+              active: true,
               kind: 'warning',
               reason: 'Review the fair-play notice.',
               expires_at: '2027-01-11T12:00:00Z',
               acknowledged_at: acknowledged ? '2026-10-13T12:00:00Z' : null,
+              starts_at: '2026-10-13T12:00:00Z',
+              revoked_at: null,
+              appeal: {
+                eligible: true,
+                detail: 'You can appeal this sanction.',
+                available_at: null,
+              },
             },
           ],
         };
@@ -79,6 +87,7 @@ beforeEach(() => {
         };
         return {
           id: 'warning-id',
+          active: true,
           kind: 'warning',
           reason: 'Review the fair-play notice.',
           expires_at: '2027-01-11T12:00:00Z',
@@ -174,10 +183,10 @@ it('reports failed logout without pretending the account is signed out', async (
 it('acknowledges a warning through the existing API and refreshes the restriction banner', async () => {
   current.restrictions!.unacknowledged_warnings = ['warning-id'];
   page('/settings/account');
-  await screen.findByRole('link', { name: 'Review account notices' });
+  await screen.findByRole('heading', { name: 'Account notices' });
   fireEvent.click(await screen.findByRole('button', { name: 'Acknowledge warning' }));
   await screen.findByText('Warning acknowledged.');
-  expect(screen.getByText('Acknowledged')).toBeInTheDocument();
+  expect(await screen.findByText('Acknowledged')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Acknowledge warning' })).not.toBeInTheDocument();
   await waitFor(() =>
     expect(screen.queryByRole('link', { name: 'Review account notices' })).not.toBeInTheDocument(),

@@ -11,8 +11,6 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from moderation.services import account_restrictions
-
 from .models import User
 from .permissions import AccountAccess
 from .serializers import (
@@ -84,14 +82,9 @@ class MeView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        if not request.user.is_authenticated:
-            return Response({"user": None, "restrictions": None})
-        return Response(
-            {
-                "user": UserSerializer(request.user).data,
-                "restrictions": account_restrictions(request.user),
-            }
-        )
+        from .session_state import session_payload
+
+        return Response(session_payload(request))
 
     def patch(self, request):
         # Apply normal account permission to edits; reads are used for warning UI.

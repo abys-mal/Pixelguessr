@@ -695,7 +695,9 @@ def test_blocked_cookie_session_cannot_recover_owned_solo_game(
         reason="Solo session audit",
         starts_at=clock["now"],
     )
-    assert client.get(BASE + f"rounds/{round_id}/").status_code == 404
-    assert guess(client, round_id, "balloon").status_code == 404
+    assert client.get(BASE + f"rounds/{round_id}/").status_code == (
+        403 if kind == "closed" else 200
+    )
+    assert guess(client, round_id, "balloon").status_code == (403 if kind == "closed" else 200)
     # The existing guest mode remains public; account/session bans are not device bans.
     assert start(APIClient()).status_code == 201

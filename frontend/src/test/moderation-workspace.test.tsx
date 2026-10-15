@@ -34,7 +34,6 @@ let appeal: Record<string, unknown>;
 let report: Record<string, unknown>;
 let detail: Record<string, unknown>;
 let notice: Record<string, unknown>;
-let noticesAccess: boolean;
 let seen: [string, RequestInit | undefined][];
 const pageData = (rows: unknown[]) => ({
   count: rows.length,
@@ -109,13 +108,19 @@ beforeEach(() => {
     ...warning,
     appeal: { eligible: true, detail: 'You can appeal this sanction.', available_at: null },
   };
-  noticesAccess = true;
   seen = [];
   vi.mocked(api)
     .mockReset()
     .mockImplementation(async (path, options) => {
       seen.push([path, options]);
       if (path === '/api/auth/me/') return current;
+      if (path === '/api/auth/settings/')
+        return {
+          username: player.username,
+          email: moderator.email,
+          username_change_available: true,
+          username_change_available_at: '2026-04-01T00:00:00Z',
+        };
       if (path === '/api/moderation/workspace/')
         return {
           pending_reports: 1,
@@ -135,12 +140,7 @@ beforeEach(() => {
       )
         return {};
       if (path === '/api/moderation/notices/') {
-        if (!noticesAccess) throw new Error('Authentication credentials were not provided.');
         return { username: player.username, sanctions: [notice], appeals: [] };
-      }
-      if (path === '/api/moderation/notice-login/') {
-        noticesAccess = true;
-        return { username: player.username };
       }
       if (path.endsWith('/appeal/')) {
         notice.appeal = {
@@ -293,14 +293,9 @@ it('reports API failures without pretending a reversal succeeded', async () => {
   expect(screen.queryByText('Changes saved.')).not.toBeInTheDocument();
 });
 
-it('provides restricted player verification and an explanation-required appeal flow', async () => {
-  current.user = null;
-  noticesAccess = false;
-  page('/account-notices');
-  const username = await screen.findByRole('textbox', { name: 'Username' });
-  await userEvent.type(username, 'pixelplayer');
-  await userEvent.type(screen.getByLabelText('Password'), 'test-password');
-  await userEvent.click(screen.getByRole('button', { name: 'View my notices' }));
+it('submits an explanation-required appeal inside normal account settings', async () => {
+  current.user = { ...moderator, moderation_access: false };
+  page('/settings/account');
   await userEvent.click(await screen.findByRole('button', { name: 'Appeal this sanction' }));
   const submit = screen.getByRole('button', { name: 'Submit appeal' });
   expect(submit).toBeDisabled();
@@ -312,4 +307,7 @@ it('provides restricted player verification and an explanation-required appeal f
   await screen.findByText('Your appeal has been submitted for review.');
   await screen.findByText('This warning has already been appealed.');
   expect(screen.queryByRole('button', { name: 'Appeal this sanction' })).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText('Password', { exact: true, selector: 'input' }),
+  ).not.toBeInTheDocument();
 });

@@ -62,6 +62,9 @@ class SanctionAdmin(admin.ModelAdmin):
             raise PermissionDenied("Sanction changes require change permission.")
         user_ids = sorted(set(queryset.values_list("user_id", flat=True)))
         with transaction.atomic():
+            from games.ranked import gate
+
+            gate()
             from accounts.models import User
 
             for user_id in user_ids:

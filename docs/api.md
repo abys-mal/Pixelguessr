@@ -18,8 +18,7 @@ session cookies and CSRF. Workspace responses are private and non-cacheable.
 | `workspace/appeals/?status=pending&page=` | GET | Appeal inbox; `status=all` includes history |
 | `workspace/appeals/<uuid>/resolve/` | POST | `decision`: uphold or reverse |
 | `workspace/players/<uuid>/access/` | POST | Administrator-only `enabled` boolean, with audit |
-| `notice-login/` | POST | Username/password proof valid for 15 minutes; no game login |
-| `notices/` | GET / DELETE | Own public notices and appeal history / end limited proof |
+| `notices/` | GET | Normal authenticated session; own public sanction history (including active flag) and appeal history |
 | `sanctions/<uuid>/appeal/` | POST | Own active sanction; required explanation, max 4000 characters |
 
 Workspace access requires the application permission or active superuser status.
@@ -51,11 +50,21 @@ All paths have trailing slashes. JSON responses unless noted. Session cookies au
 | POST   | `/api/moderation/sanctions/<uuid>/acknowledge/` | Session + CSRF; own active warning only; idempotent                                           |
 | GET    | `/api/modes/`                                   | Public intended rules; gameplay_available=true; singleplayer and parties available=true              |
 
-Standard paginated result: `{count, next, previous, results}` (24 per page). Validation failures are 400, denied session permissions 403, unknown objects 404, and throttled requests 429. Login failure has a generic error; production should add edge abuse controls. CSRF failure may use Django’s HTML error body; the frontend never displays raw HTML.
+Standard paginated result: `{count, next, previous, results}` (24 per page). Validation failures are 400, denied session permissions 403, unknown objects 404, and throttled requests 429. Invalid login credentials receive a generic error; verified credentials for a closed account receive "Your account has been closed."; production should add edge abuse controls. CSRF failure may use Django’s HTML error body; the frontend never displays raw HTML.
 
 Submission fields: `canonical_answer` (120 chars), `accepted_synonyms` (JSON list, max 30 strings of 120 chars), `category` (integer ID), `source` (`commons`, `licensed`, `ai`, `manual`), `source_url` (HTTPS provenance required for commons/licensed), `license` (160 chars), `attribution` (500 chars), and exactly one of `external_image_url` or `image_file`. With multipart, encode accepted_synonyms as a JSON string. Upload limits: 8 MB, still JPEG/PNG/WebP, minimum 64 px per side, maximum 4096 px per side and 12 MP. Client-supplied status, reviewer, owner, and storage keys are never accepted as writable fields. Public catalog output includes only `id`, nested category metadata, and `created_at`.
 
 Throttle scopes: anonymous 120/hour, user 1200/hour, login/register 10/minute, image creation 20/day, reports 10/day. Scoped endpoints use their scope rather than both generic scopes. Configure trusted proxy count according to real infrastructure; the default trusts no forwarding headers. DRF cache throttles are non-atomic and provide only a baseline usage policy.
+
+## Live account state
+
+`/ws/account/` authenticates the normal session cookie and validates the Origin.
+It sends `{type: "state", state: <same public session DTO as /api/auth/me/>}` when
+account state changes. The restriction DTO includes `blocked` (closure/inactive),
+`suspension`, `probation`, `unacknowledged_warnings` and `notice` (kind, public
+restriction message, expiry). A verified closed session receives `user: null`,
+`restrictions: null`, `account_closed: true` and `closure_message`, then closes.
+No internal moderation notes are included. See [enforcement](moderation-enforcement.md).
 
 ## Account settings
 

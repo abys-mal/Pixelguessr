@@ -7,13 +7,16 @@ No essential state or disconnect timestamp depends on process-local memory.
 import secrets
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 
 from accounts.models import User
+from moderation.models import Sanction
 from moderation.services import account_restrictions
 
 from .models import (
@@ -48,16 +51,19 @@ def eligible(user):
     if not user or not user.is_authenticated:
         raise PermissionDenied("Sign in to play Ranked Duel.")
     restrictions = account_restrictions(user)
-    if (
-        restrictions["blocked"]
-        or restrictions["probation"]
-        or restrictions["unacknowledged_warnings"]
-    ):
-        raise PermissionDenied("Resolve your account notice before playing Ranked Duel.")
+    if restrictions["blocked"] or restrictions["probation"] or restrictions["suspension"]:
+        raise PermissionDenied(
+            "Ranked duels are unavailable during probation, suspension, or account closure."
+        )
 
 
 def owned(user, match_id):
-    eligible(user)
+    if not user or not user.is_authenticated or not user.is_active:
+        raise PermissionDenied(
+            "Your account has been closed."
+            if user and user.is_authenticated
+            else "Sign in to view this duel."
+        )
     match = Match.objects.filter(
         pk=match_id, mode=Match.Mode.RANKED, participants__user=user
     ).first()
@@ -77,6 +83,12 @@ def current_round(match):
 def changed(match):
     match.ranked_revision += 1
     match.save()
+    transaction.on_commit(
+        lambda: async_to_sync(get_channel_layer().group_send)(
+            f"ranked.{match.pk}", {"type": "ranked.changed"}
+        ),
+        robust=True,
+    )
 
 
 def new_round(match, now, countdown=False):
@@ -159,10 +171,42 @@ def connected(player, now):
     )
 
 
+def moderation_blockers(players, now):
+    rows = (
+        Sanction.objects.filter(
+            user_id__in=[p.user_id for p in players],
+            kind__in=["closed", "suspension", "probation"],
+            starts_at__lte=now,
+            revoked_at__isnull=True,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .values_list("user_id", "kind")
+    )
+    priority = {"probation": 1, "suspension": 2, "closed": 3}
+    result = {}
+    for user_id, kind in rows:
+        if priority[kind] > priority.get(result.get(user_id), 0):
+            result[user_id] = kind
+    result.update({p.user_id: "closed" for p in players if not p.user.is_active})
+    return result
+
+
 def reconcile(match, now):
     if match.status != Match.Status.ACTIVE:
         return
     players = participants(match)
+    blockers = moderation_blockers(players, now)
+    # Sanctions precede every round/disconnect transition, including double-disconnect No Contest.
+    for player in players:
+        if player.user_id in blockers:
+            kind = {"closed": "closed", "suspension": "suspended", "probation": "on probation"}[
+                blockers[player.user_id]
+            ]
+            match.ranked_message = (
+                f"This duel ended by forfeit because a participant's account is {kind}."
+            )
+            complete(match, next(p for p in players if p.pk != player.pk), "forfeit", now)
+            return
     cutoff = now - timedelta(seconds=rule("presence_seconds"))
     RankedConnection.objects.filter(match=match, last_seen__lt=cutoff).delete()
     for player in players:
@@ -296,6 +340,7 @@ def queue_join(user, ticket):
     eligible(user)
     with transaction.atomic():
         gate()
+        eligible(user)
         now = timezone.now()
         entry, _ = RankedQueue.objects.get_or_create(user=user)
         if entry.match_id and entry.match.status == Match.Status.ACTIVE:
@@ -317,6 +362,17 @@ def queue_join(user, ticket):
         return queue_payload(
             RankedQueue.objects.select_related("match", "user").get(pk=user.pk), now
         )
+
+
+def enforce_queue(user_id):
+    """The caller holds the ranked gate."""
+    user = User.objects.filter(pk=user_id).first()
+    if user:
+        try:
+            eligible(user)
+        except PermissionDenied:
+            RankedQueue.objects.filter(user_id=user_id).update(queued_at=None)
+            RankedConnection.objects.filter(user_id=user_id, match__isnull=True).delete()
 
 
 def queue_state(user, ticket=None, heartbeat=False, cancel=False, connection_id=None):
@@ -394,10 +450,12 @@ def disconnect(connection_id):
             ).update(queued_at=None)
 
 
-def transition_due(match, players, game_round, now):
+def transition_due(match, players, game_round, now, blockers=None):
     """Only durable deadlines can require a writer; reveal progress is read-only."""
     if match.status != Match.Status.ACTIVE:
         return False
+    if blockers if blockers is not None else moderation_blockers(players, now):
+        return True
     cutoff = now - timedelta(seconds=rule("presence_seconds"))
     if any(p.ranked_disconnected_at is None and p.ranked_last_seen < cutoff for p in players):
         return True
@@ -420,7 +478,7 @@ def transition_due(match, players, game_round, now):
     )
 
 
-def read_snapshot(user, match_id, *, include_states=True):
+def read_snapshot(user, match_id, *, include_states=True, playing=False):
     """Read persisted state without a writer gate when no transition is due.
 
     SQLite's read transaction gives a consistent snapshot. PostgreSQL READ COMMITTED
@@ -440,7 +498,14 @@ def read_snapshot(user, match_id, *, include_states=True):
             if revision != match.ranked_revision:
                 continue
             now = timezone.now()
-            if transition_due(match, players, game_round, now):
+            blockers = moderation_blockers(players, now)
+            if blockers.get(user.pk) == "closed" or (playing and user.pk in blockers):
+                raise PermissionDenied(
+                    "Your account has been closed."
+                    if blockers.get(user.pk) == "closed"
+                    else "Ranked duels are unavailable during probation or suspension."
+                )
+            if transition_due(match, players, game_round, now, blockers):
                 return None
             return match, players, game_round, states, now
     return None
@@ -461,7 +526,9 @@ def state(user, match_id, *, connection_id=None, heartbeat=False):
         now = timezone.now()
         reconcile(match, now)
         player = match.participants.get(user=user)
-        if heartbeat and match.status == Match.Status.ACTIVE:
+        if account_restrictions(user)["blocked"]:
+            error = PermissionDenied("Your account has been closed.")
+        if not error and heartbeat and match.status == Match.Status.ACTIVE:
             if player.ranked_disconnected_at and now >= player.ranked_disconnected_at + timedelta(
                 seconds=rule("grace_seconds")
             ):
@@ -479,7 +546,8 @@ def state(user, match_id, *, connection_id=None, heartbeat=False):
                         pk=connection_id, defaults={"user": user, "match": match, "last_seen": now}
                     )
                 reconcile(match, now)
-        result = payload(match, user, now)
+        if not error:
+            result = payload(match, user, now)
     if error:
         raise error
     return result
@@ -494,6 +562,7 @@ def submit(user, match_id, round_id, text, request_id):
         now = timezone.now()
         reconcile(match, now)
         try:
+            eligible(user)
             if match.status != Match.Status.ACTIVE:
                 raise GameError("This match has finished.", "match_complete")
             game_round = current_round(match)
@@ -536,12 +605,19 @@ def submit(user, match_id, round_id, text, request_id):
 
 
 def leave(user, match_id):
+    error = None
     with transaction.atomic():
         gate()
         match = owned(user, match_id)
-        if match.status == Match.Status.ACTIVE:
+        reconcile(match, timezone.now())
+        if account_restrictions(user)["blocked"]:
+            error = PermissionDenied("Your account has been closed.")
+        elif match.status == Match.Status.ACTIVE:
             complete(match, match.participants.exclude(user=user).get(), "forfeit", timezone.now())
-        return payload(match, user, timezone.now())
+        result = payload(match, user, timezone.now()) if not error else None
+    if error:
+        raise error
+    return result
 
 
 def reveal_count(game_round, now):
@@ -635,12 +711,13 @@ def payload(match, user, now, *, snapshot=None):
 
 
 def image(user, match_id, round_id):
-    snapshot = read_snapshot(user, match_id, include_states=False)
+    snapshot = read_snapshot(user, match_id, include_states=False, playing=True)
     if snapshot:
         match, _, game_round, _, now = snapshot
     else:
         # Commit due transitions even when the requested image is later refused.
         state(user, match_id)
+        eligible(user)
         with transaction.atomic():
             gate()
             match = owned(user, match_id)

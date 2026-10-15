@@ -1,13 +1,11 @@
 from django.urls import path
 
-from . import portal
 from . import workspace_views as workspace
-from .views import AcknowledgeView, MySanctionsView, ReportView
+from .views import AcknowledgeView, MyNotices, MySanctionsView, ReportView, SubmitAppeal
 
 urlpatterns = [
-    path("notice-login/", portal.NoticeLogin.as_view()),
-    path("notices/", portal.MyNotices.as_view()),
-    path("sanctions/<uuid:pk>/appeal/", portal.SubmitAppeal.as_view()),
+    path("notices/", MyNotices.as_view()),
+    path("sanctions/<uuid:pk>/appeal/", SubmitAppeal.as_view()),
     path("workspace/", workspace.Overview.as_view()),
     path("workspace/players/", workspace.Players.as_view()),
     path("workspace/players/<uuid:pk>/", workspace.Player.as_view()),

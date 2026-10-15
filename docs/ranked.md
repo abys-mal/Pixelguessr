@@ -1,6 +1,6 @@
 # Ranked Duel — Phase 4
 
-Ranked is registered-only matchmaking; it is separate from private parties. Guests can still play singleplayer and parties. Probation, suspension/closure and unacknowledged warnings prevent ranked entry. No placement phase, account-age gate, chat, spectators, invites or direct rematches.
+Ranked is registered-only matchmaking; it is separate from private parties. Guests can still play singleplayer and parties. Probation, suspension and closure prevent ranked entry; warnings do not. Active restrictions forfeit an ongoing duel with the existing Elo rules applied exactly once. See [moderation enforcement](moderation-enforcement.md). No placement phase, account-age gate, chat, spectators, invites or direct rematches.
 
 ## Rules and privacy
 
@@ -94,7 +94,7 @@ Two registered accounts checklist (separate browser profiles, or localhost and 1
 
 The database gate deliberately serializes ranked decisions for correctness on SQLite and PostgreSQL. Queue scans and once-per-second personalized state/reveal rendering are suitable for local use; load-test and optimize them before public scale. Redis configuration is preserved, but correctness does not rely on an in-memory Channels group. Production workers share database state; isolated in-memory channels should remain development-only. Clock recovery is durable, while results may arrive one polling tick late and browser countdowns are cosmetic. Server-observed half-open disconnects include the documented presence lease before grace.
 
-Linux/PostgreSQL/Redis infrastructure is not available in this local Windows verification. Existing CI configuration can exercise them when you push. Add production monitoring, supervised clock processes, compositor load testing and edge rate controls next. Account email verification/recovery, appeals and production deployment remain separate future work.
+Linux/PostgreSQL/Redis infrastructure is not available in this local Windows verification. Existing CI configuration can exercise them when you push. Add production monitoring, supervised clock processes, compositor load testing and edge rate controls next. Account email verification/recovery and production deployment remain separate future work. Normal-session appeals are available in Account Settings.
 
 ## Ranked synchronization (Phase 4.1)
 

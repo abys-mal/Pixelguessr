@@ -40,7 +40,7 @@ beforeEach(() => {
     .mockImplementation(async (path, options) => {
       if (path === '/api/auth/me/') return { user: { ...user }, restrictions };
       if (path === '/api/auth/settings/') return settings;
-      if (path === '/api/moderation/sanctions/') return notices;
+      if (path === '/api/moderation/notices/') return { sanctions: notices.results, appeals: [] };
       if (path.startsWith('/api/auth/change-')) {
         const data = JSON.parse(String(options?.body));
         if (data.new_username) {

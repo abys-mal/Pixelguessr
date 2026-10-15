@@ -16,6 +16,99 @@
   --peach: #ffc59c;
   color-scheme: dark;
 }
+.sanction-banner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 28px;
+  padding: 22px 26px;
+  border: 1px solid #a78bfa55;
+  border-left: 3px solid var(--violet);
+  border-radius: 10px;
+  background: #b8a0ff09;
+}
+.sanction-banner.suspension {
+  border-color: #f2a5aa55;
+  border-left-color: #f2a5aa;
+  background: #f2a5aa08;
+}
+.sanction-banner.warning {
+  border-color: #e6c28155;
+  border-left-color: #e6c281;
+  background: #e6c28108;
+}
+.sanction-banner-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--violet);
+}
+.sanction-banner h2 {
+  font-size: 17px;
+  margin-bottom: 6px;
+}
+.sanction-banner p {
+  font-size: 14px;
+  color: #d3cfdf;
+}
+.sanction-banner small {
+  color: var(--muted);
+  display: block;
+  margin-top: 6px;
+}
+.sanction-banner > div {
+  flex: 1;
+  min-width: 0;
+}
+.sanction-banner > a {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-notices {
+  margin-top: 28px;
+  scroll-margin-top: 24px;
+}
+.account-notices h2,
+.account-notices h3 {
+  margin-bottom: 12px;
+}
+.account-notices h3 {
+  font-size: 20px;
+  text-transform: capitalize;
+}
+.account-notices .notice {
+  display: grid;
+  gap: 12px;
+}
+.account-notices textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: inherit;
+}
+.account-notices .notice button {
+  justify-self: start;
+}
+@media (max-width: 620px) {
+  .sanction-banner {
+    flex-wrap: wrap;
+    padding: 20px;
+    gap: 12px;
+  }
+  .sanction-banner > a {
+    margin-left: 40px;
+  }
+  .sanction-banner > div {
+    flex-basis: calc(100% - 52px);
+  }
+}
 * {
   box-sizing: border-box;
 }

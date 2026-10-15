@@ -626,6 +626,11 @@ export function PartyGame() {
           {game.error}
         </p>
       )}
+      {state.notice && (
+        <p role="status" className="message">
+          {state.notice}
+        </p>
+      )}
       {state.message && (
         <p role="alert" className="message error">
           {state.message} The party will retry automatically.

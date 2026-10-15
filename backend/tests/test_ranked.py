@@ -548,6 +548,9 @@ def test_moderation_blocks_ranked_queue(images, user, staff, kind):
     Sanction.objects.create(
         user=user, issued_by=staff, category="fair_play", kind=kind, reason="Test restriction"
     )
+    if kind == "warning":
+        assert ranked.queue_join(user, uuid.uuid4())["status"] == "searching"
+        return
     with pytest.raises(APIException):
         ranked.queue_join(user, uuid.uuid4())
     assert not RankedQueue.objects.filter(queued_at__isnull=False).exists()
@@ -863,7 +866,9 @@ def test_cached_frame_rechecks_restrictions_and_forfeit(game, user, opponent, cl
     sanction.revoked_at = clock["now"]
     sanction.revoked_by = staff
     sanction.save(update_fields=["revoked_at", "revoked_by"])
-    assert client.get(frame).status_code == 200
+    # Reversal restores eligibility, but must never resurrect a settled duel.
+    assert client.get(frame).status_code == 404
+    assert ranked.state(user, game.pk)["outcome"] == "forfeit"
     ranked.leave(opponent, game.pk)
     assert client.get(frame).status_code == 404
 
@@ -907,7 +912,9 @@ def test_sanction_imposed_during_queue_removes_search_without_match(images, user
         user=user, issued_by=staff, kind=kind, category="fair_play", reason="Queue audit"
     )
     ranked.clock_tick()
-    assert not RankedQueue.objects.filter(user=user, queued_at__isnull=False).exists()
+    assert RankedQueue.objects.filter(user=user, queued_at__isnull=False).exists() == (
+        kind == "warning"
+    )
     assert not Match.objects.filter(mode="ranked").exists()
 
 
@@ -924,6 +931,10 @@ def test_active_ranked_sanction_blocks_guesses_and_existing_images(
     Sanction.objects.create(
         user=user, issued_by=staff, kind=kind, category="fair_play", reason="Active audit"
     )
+    if kind == "warning":
+        assert client.get(frame).status_code == 200
+        assert submit(user, game)["result"] == "correct"
+        return
     assert client.get(frame).status_code == 403
     before = RoundPlayerState.objects.filter(
         round__match=game, ranked_guessed_at__isnull=False
@@ -934,9 +945,10 @@ def test_active_ranked_sanction_blocks_guesses_and_existing_images(
         RoundPlayerState.objects.filter(round__match=game, ranked_guessed_at__isnull=False).count()
         == before
     )
-    assert ranked.state(opponent, game.pk)["status"] == "active"
+    final = ranked.state(opponent, game.pk)
+    assert final["status"] == "complete" and final["outcome"] == "forfeit"
     user.refresh_from_db()
-    assert user.rating == 1000
+    assert user.rating == 980 and user.ranked_losses == 1
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)
@@ -974,9 +986,9 @@ async def test_live_ranked_socket_revokes_access_when_suspended(game, user, staf
         )
         for _ in range(8):
             message = await socket.receive_json_from(timeout=2)
-            if message["type"] == "access_denied":
+            if message["type"] == "state" and message["state"]["status"] == "complete":
                 break
-        assert message["type"] == "access_denied"
-        assert (await socket.receive_output(timeout=2))["code"] == 4403
+        assert message["type"] == "state" and message["state"]["outcome"] == "forfeit"
+        assert message["state"]["winner_id"] != message["state"]["me_id"]
     finally:
         await socket.disconnect()

@@ -2,7 +2,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -22,8 +22,17 @@ from .services import (
 )
 
 
+class SingleplayerAccess(BasePermission):
+    message = "Your account has been closed."
+
+    def has_permission(self, request, view):
+        from moderation.services import closed_session
+
+        return not closed_session(request)
+
+
 class SingleplayerView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [SingleplayerAccess]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "game_read"
 

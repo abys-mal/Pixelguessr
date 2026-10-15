@@ -22,7 +22,7 @@ def test_warning_acknowledgment_and_expiry(client, user, staff, submission_data)
     assert warning.expires_at == warning.starts_at + timedelta(days=90)
     client.force_authenticate(user)
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 403
+        client.post("/api/library/submissions/", submission_data, format="json").status_code == 201
     )
     assert client.post(f"/api/moderation/sanctions/{warning.pk}/acknowledge/").status_code == 200
     assert (
@@ -62,16 +62,13 @@ def test_probation_blocks_submissions_until_expiry(client, user, staff, submissi
 def test_sanctions_block_authentication_and_existing_sessions(client, user, staff, kind):
     client.force_login(user, backend="accounts.backends.AccountBackend")
     sanction(user, staff, kind)
-    assert not AccountBackend().user_can_authenticate(user)
-    assert client.get("/api/auth/me/").json()["user"] is None
-    assert (
-        client.post(
-            "/api/auth/login/",
-            {"username": user.username, "password": "a-strong-unique-pass-734"},
-            format="json",
-        ).status_code
-        == 400
-    )
+    assert AccountBackend().user_can_authenticate(user) == (kind == "suspension")
+    assert (client.get("/api/auth/me/").json()["user"] is None) == (kind == "closed")
+    assert client.post(
+        "/api/auth/login/",
+        {"username": user.username, "password": "a-strong-unique-pass-734"},
+        format="json",
+    ).status_code == (400 if kind == "closed" else 200)
 
 
 def test_closure_reversal_requires_administrator(user, staff):

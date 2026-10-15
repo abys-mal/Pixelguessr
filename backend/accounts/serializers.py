@@ -128,11 +128,18 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         user = authenticate(request=self.context["request"], **attrs)
         if not user:
+            # Closure status is disclosed only after verifying the supplied password.
+            candidate = User.objects.filter(username=attrs["username"]).first()
+            if candidate and candidate.check_password(attrs["password"]):
+                from moderation.services import active_sanctions
+
+                if active_sanctions(candidate).filter(kind="closed").exists():
+                    raise serializers.ValidationError("Your account has been closed.")
             raise serializers.ValidationError("Invalid username or password.")
         from moderation.services import account_restrictions
 
         if account_restrictions(user)["blocked"]:
-            raise serializers.ValidationError("This account is suspended or closed.")
+            raise serializers.ValidationError("Your account has been closed.")
         return {"user": user}
 
 

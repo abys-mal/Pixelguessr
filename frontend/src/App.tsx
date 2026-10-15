@@ -16,7 +16,6 @@ import { ModerationHome } from './moderation/Home';
 import { ModerationPlayers } from './moderation/Players';
 import { ModerationPlayer } from './moderation/Player';
 import { ModerationInbox } from './moderation/Inbox';
-import { PlayerAppeals } from './pages/Appeals';
 
 export function App() {
   return (
@@ -44,7 +43,6 @@ export function App() {
         <Route path="profile" element={<Profile />} />
         <Route path="settings/account" element={<Settings />} />
         <Route path="settings" element={<Settings />} />
-        <Route path="account-notices" element={<PlayerAppeals />} />
         <Route path="library" element={<Library />} />
         <Route path="submit" element={<Submit />} />
         <Route path="leaderboards" element={<Leaderboards />} />

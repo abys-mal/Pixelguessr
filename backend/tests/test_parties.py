@@ -969,7 +969,7 @@ def test_registered_party_creation_uses_cookie_session_identity(client, user):
 
 
 @pytest.mark.parametrize("kind", ["warning", "suspension", "closed"])
-def test_active_party_sanction_blocks_account_actions_and_uses_existing_host_grace(
+def test_active_party_sanction_enforces_host_restrictions_without_grace(
     client, images, user, staff, clock, kind
 ):
     from moderation.models import Sanction
@@ -984,14 +984,20 @@ def test_active_party_sanction_blocks_account_actions_and_uses_existing_host_gra
     Sanction.objects.create(
         user=user, issued_by=staff, kind=kind, category="fair_play", reason="Party audit"
     )
+    if kind == "warning":
+        assert client.get(BASE + code + "/").status_code == 200
+        assert guess(client, code, round_id, answer(round_id)).status_code == 200
+        return
     assert client.get(BASE + code + "/").status_code in [403, 404]
     assert guess(client, code, round_id, answer(round_id)).status_code in [403, 404]
     assert client.get(BASE + code + f"/rounds/{round_id}/image/").status_code in [403, 404]
     assert not Guess.objects.filter(round_id=round_id).exists()
-    advance_time(clock, 40, heartbeat=False)
     clock_tick()
     result = state(other, code)
-    assert result["status"] == "aborted" and result["end_reason"] == "host_disconnected"
+    assert (
+        result["status"] == "aborted"
+        and result["end_reason"] == f"host_{'suspended' if kind == 'suspension' else 'closed'}"
+    )
     user.refresh_from_db()
     assert user.rating == 1000
 

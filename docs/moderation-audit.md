@@ -1,3 +1,8 @@
+> Historical Phase 5.2 audit. Current native moderator/admin access and sanction behavior
+> are documented in [native moderation](native-moderation.md) and
+> [gameplay enforcement](moderation-enforcement.md). Those rules supersede the
+> original manual expectations below.
+
 # Pixelguessr moderation/admin browser checklist
 
 This is the historical Phase 5.2 checklist. Native moderation now replaces the
@@ -118,7 +123,7 @@ console.log(response.status, await response.json());
 
 - As moderator, add a sanction for `audit_player`: Fair Play, Warning, a clearly marked synthetic reason, and current start time. Leave expiry blank. **Expected:** issuer is assigned server-side and expiry is exactly start + 90 days.
 - Refresh the player's game page. **Expected:** a notice banner; Account settings shows the reason and Acknowledge warning.
-- Before acknowledgment, try Ranked, party membership, image submission, and another report. **Expected:** restricted. Singleplayer remains available under the existing policy.
+- Before acknowledgment, try Ranked, party membership, image submission, and another report. **Expected:** all allowed; warnings only create notices.
 - Acknowledge the warning. **Expected:** the restriction banner disappears after authentication refresh; the notice remains marked Acknowledged until expiry/revocation. Repeated acknowledgment retains its first timestamp. Another player cannot acknowledge it.
 - For an expiry check, create a separate warning beginning 91 days ago. **Expected:** stored for history, absent from active notices and restrictions.
 
@@ -126,9 +131,9 @@ console.log(response.status, await response.json());
 
 - Revoke prior active test sanctions before testing each kind independently.
 - Add probation starting now, with an expiry a few minutes later. **Expected:** Ranked entry and image submissions denied; singleplayer, parties, and reporting remain available. Expiry or authorized revocation restores access.
-- Add suspension starting now with a short expiry. **Expected:** login denied, existing account sessions/private game requests blocked, and active sockets lose access on their next check. Reinstatement follows expiry/revocation. Sign Out must still flush a stale or blocked session.
-- During a ranked match, impose a restriction on the test player. **Expected:** further guesses/images denied; existing disconnect/grace rules settle the match. No instant Elo penalty or changed match rule is introduced.
-- During a two-player party, warn/suspend its test host. **Expected:** host requests fail; the existing host presence/grace timeout ends the party. Stored scores are not rewritten.
+- Add suspension starting now with a short expiry. **Expected:** normal login, settings and singleplayer allowed; parties, ranked and image submissions blocked. Reinstatement follows expiry/revocation. Sign Out must still flush a stale or blocked session.
+- During a ranked match, impose a restriction on the test player. **Expected:** probation/suspension/closure immediately forfeit the duel, awarding the opponent the win and applying Elo exactly once. Warnings do not interrupt it.
+- During a two-player party, warn/suspend its test host. **Expected:** warnings leave it intact; suspension immediately ends it, removes everyone and explains the host restriction. Stored scores are preserved.
 - Add Closed to the test player with no expiry. **Expected:** login remains blocked; setting `is_active=True` alone does not reopen it. Moderator Revoke is denied, including mixed selections containing closure. Administrator Revoke restores access while preserving the sanction record.
 - Public profiles/history and active-user leaderboard visibility follow the existing policy: a sanction does not automatically set `is_active=False` or hide those public records. Guest access is not a device ban.
 

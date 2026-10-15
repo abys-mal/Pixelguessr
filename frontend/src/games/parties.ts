@@ -35,6 +35,7 @@ export interface PartyRound {
   };
 }
 export interface PartyState {
+  notice?: string;
   code: string;
   status: 'lobby' | 'playing' | 'complete' | 'closed' | 'aborted';
   revision: number;

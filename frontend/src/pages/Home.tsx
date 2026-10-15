@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
+import { SanctionBanner } from '../components/SanctionBanner';
 import { Badge } from '../components/ui';
 import { modes } from '../modes';
 
 export function Home() {
   return (
     <>
+      <SanctionBanner />
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">

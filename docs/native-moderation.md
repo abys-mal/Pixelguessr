@@ -55,13 +55,13 @@ a linked successor. Replacing a closure also requires an administrator because
 replacement reverses the original. Moderators cannot search/review or moderate
 staff, native moderators or administrators; administrators can.
 
-Players open `/account-notices` from Account settings or the sign-in page. Normal
-signed-in accounts share their existing session. A suspended player can verify
-their username/password for a **15-minute notices-only session**. It never sets
-Django's authenticated game identity and cannot grant game/admin/workspace access.
-CSRF and the existing authentication throttle apply. The proof is bound to the
-account password hash, expires, and can be explicitly ended. Manually inactive
-accounts cannot obtain this proof. Closure notices can be read but never appealed.
+Players open Account Settings at `/settings/account#account-notices` using their
+normal authenticated session. Suspension preserves login, settings, appeals and
+singleplayer; probation also preserves parties. Warnings only create notices.
+Closure blocks authenticated access and has no appeal. There is no separate
+notice-login endpoint or limited authentication session. See
+[current enforcement rules](moderation-enforcement.md) for the complete matrix,
+active-game transitions, live updates and recovery behavior.
 
 Warnings have one appeal per individual sanction, even after a denial. Probation
 appeals have a rolling 30-day submission cooldown; suspension appeals have 90 days.
@@ -92,16 +92,16 @@ the normal development database and actual users separate.
 2. Search a player in Players. Issue a warning with both optional fields blank,
    then another warning. Confirm both appear. Add probation; a second probation
    must be rejected. Player notices must never expose an internal note.
-3. As the player, open Notices & appeals. Submit an explanation for the warning.
+3. As the player, open Account settings → Account notices. Submit an explanation for the warning.
    As moderator, uphold it in Appeals. The player cannot appeal that warning again;
    independently reversing it from Players must still work.
 4. Appeal probation, then replace it in Players. Confirm the predecessor remains,
    the successor is linked, the pending appeal becomes Sanction changed, and the
    original submission cooldown remains in effect. Activity records every actor/time.
-5. Suspend the player. Normal sign-in/game requests remain blocked. On the sign-in
-   page use Review notices & appeals, verify credentials and submit a suspension
-   appeal. This does not sign the player into games. Reverse from Appeals and verify
-   normal sign-in works again. Confirm expired proof and missing CSRF are denied.
+5. Suspend the player while already signed in. Normal sign-in, settings and
+   singleplayer remain available. Parties, ranked and submissions are denied.
+   Submit an appeal in Account settings, reverse it from Appeals, and verify new
+   multiplayer entry works without losing sanction history.
 6. Close the player account. Confirm closure cannot be appealed or reversed/replaced
    by a moderator. As administrator reverse it; the original record remains.
 7. Submit a report using the existing `/api/moderation/reports/` API. Review its

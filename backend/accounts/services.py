@@ -38,7 +38,7 @@ def change_account(user_id, operation, data):
         User.objects.filter(pk=user_id).update(last_username_change=F("last_username_change"))
         user = User.objects.get(pk=user_id)
         restrictions = account_restrictions(user)
-        if restrictions["blocked"] or restrictions["unacknowledged_warnings"]:
+        if restrictions["blocked"]:
             raise PermissionDenied("Resolve your account notice before updating your account.")
         if not user.check_password(data["current_password"]):
             raise ValidationError({"current_password": "Current password is incorrect."})

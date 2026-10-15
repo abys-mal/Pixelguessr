@@ -452,10 +452,14 @@
   grid-template-columns: minmax(230px, 0.7fr) minmax(0, 1.6fr);
   gap: 24px;
   align-items: start;
+  width: 100%;
 }
 .mod-inbox-list {
   display: grid;
   gap: 10px;
+  margin: 0;
+  min-width: 0;
+  align-content: start;
 }
 .mod-inbox-list > button {
   text-align: left;
@@ -491,6 +495,16 @@
   display: grid;
   gap: 20px;
   min-width: 0;
+  margin: 0;
+}
+.mod-inbox-detail > .mod-card,
+.mod-inbox-detail .mod-player-detail > .mod-card {
+  margin: 0;
+  width: 100%;
+}
+.mod-inbox-list > button {
+  width: 100%;
+  margin: 0;
 }
 .mod-inbox-detail .mod-card > .mod-section-title {
   margin: 15px 0;

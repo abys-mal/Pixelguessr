@@ -1,7 +1,8 @@
 # Pixelguessr
 
 Native moderation and player appeals are implemented at `/moderation` and
-`/account-notices`. See [native moderation setup, access and workflows](docs/native-moderation.md).
+`/settings/account#account-notices`. See [native moderation setup, access and workflows](docs/native-moderation.md).
+See [current sanction effects and live enforcement](docs/moderation-enforcement.md).
 Only administrators (active superusers) can enter Django Admin; moderators use the
 native workspace with `moderation.access_workspace` permission.
 

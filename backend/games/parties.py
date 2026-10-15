@@ -10,7 +10,7 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.utils import timezone
-from rest_framework.exceptions import APIException, NotFound, PermissionDenied
+from rest_framework.exceptions import APIException, NotFound
 
 from .models import (
     Guess,
@@ -41,6 +41,8 @@ RESULT_SECONDS = 5
 PRESENCE_SECONDS = 15
 RECONNECT_GRACE_SECONDS = 15
 END_MESSAGES = {
+    "host_suspended": "The party ended because its host was suspended.",
+    "host_closed": "The party ended because its host's account was closed.",
     "host_left": "The host left the party.",
     "host_disconnected": "The host disconnected.",
     "not_enough_players": "Not enough players remain.",
@@ -56,7 +58,8 @@ def notify(party):
     transaction.on_commit(
         lambda: async_to_sync(get_channel_layer().group_send)(
             group_name(party.code), {"type": "party.changed"}
-        )
+        ),
+        robust=True,
     )
 
 
@@ -76,15 +79,25 @@ def identity_filter(request):
 
 
 def check_access(request):
+    from moderation.services import closed_session
+
+    if closed_session(request):
+        raise GameError("Your account has been closed.", "account_closed", 403)
     if request.user.is_authenticated:
         from moderation.services import account_restrictions
 
         restrictions = account_restrictions(request.user)
-        if restrictions["blocked"] or restrictions["unacknowledged_warnings"]:
-            raise PermissionDenied("This account must resolve its restriction before playing.")
+        if restrictions["blocked"] or restrictions["suspension"]:
+            raise GameError(
+                "Suspension prevents party participation."
+                if restrictions["suspension"]
+                else "Your account has been closed.",
+                "party_restricted",
+                403,
+            )
 
 
-def member_for(party, request):
+def member_for(party, request, *, terminal=False):
     check_access(request)
     matches = party.members.filter(identity_filter(request))
     if matches.filter(banned_at__isnull=False).exists():
@@ -92,6 +105,21 @@ def member_for(party, request):
     member = matches.filter(left_at__isnull=True).first()
     if not member:
         previous = matches.first()
+        if (
+            previous
+            and previous.departure_reason == "host_ended"
+            and terminal
+            and party.end_reason in ("host_suspended", "host_closed")
+        ):
+            return previous
+        if previous and previous.departure_reason in ("suspended", "closed"):
+            raise GameError(
+                "You were removed because suspension prevents party participation."
+                if previous.departure_reason == "suspended"
+                else "Your account has been closed.",
+                "party_restricted",
+                403,
+            )
         if previous and previous.departure_reason in ("kicked", "disconnected"):
             code = (
                 "party_removed" if previous.departure_reason == "kicked" else "membership_expired"
@@ -138,6 +166,7 @@ def automatic_guest_name(party, existing):
 
 
 def add_member(party, request, now):
+    check_access(request)
     matches = party.members.filter(identity_filter(request))
     if matches.filter(banned_at__isnull=False).exists():
         raise GameError("You were removed and cannot rejoin this party.", "party_banned", 403)
@@ -194,6 +223,7 @@ def create_party(request, data):
     with transaction.atomic():
         owner = next(iter(identity.values()))
         owner._meta.model.objects.filter(pk=owner.pk).update(display_name=F("display_name"))
+        check_access(request)
         existing = Party.objects.filter(create_request_id=data["request_id"]).first()
         if existing:
             member_for(existing, request)
@@ -256,6 +286,9 @@ def end_party(party, reason, now):
 
 
 def reconcile_members(party, now):
+    from moderation.enforcement import enforce_party
+
+    enforce_party(party, now)
     if party.status in (Party.Status.ABORTED, Party.Status.CLOSED):
         return
     members = list(party.members.filter(left_at__isnull=True))
@@ -274,7 +307,7 @@ def reconcile_members(party, now):
         member.save(update_fields=["left_at", "departure_reason"])
     if expired:
         changed(party)
-    if party.status == Party.Status.PLAYING and len(members) - len(expired) < 2:
+    if expired and party.status == Party.Status.PLAYING and len(members) - len(expired) < 2:
         end_party(party, "not_enough_players", now)
 
 
@@ -641,6 +674,7 @@ def payload(party, member, now):
         "leaderboard": [],
         "winners": [],
         "message": party.message,
+        "notice": party_notice(party),
         "end_reason": party.end_reason,
         "end_message": END_MESSAGES.get(party.end_reason, ""),
         "rules": {
@@ -748,12 +782,12 @@ def party_state(request, code, *, heartbeat=False):
     error = None
     with transaction.atomic():
         party = lock_party(code, allow_closed=True)
-        member = member_for(party, request)
+        member = member_for(party, request, terminal=True)
         now = timezone.now()
         # Check elapsed grace BEFORE renewing presence, so late reconnects cannot resurrect a match.
         advance(party, now)
         member.refresh_from_db()
-        if member.left_at:
+        if member.left_at and member.departure_reason != "host_ended":
             error = GameError("Your connection to this party expired.", "membership_expired", 403)
             data = None
         else:
@@ -764,6 +798,19 @@ def party_state(request, code, *, heartbeat=False):
     if error:
         raise error
     return data
+
+
+def party_notice(party):
+    removed = (
+        party.members.filter(departure_reason__in=["suspended", "closed"])
+        .order_by("-left_at")
+        .first()
+    )
+    return (
+        f"{removed.display_name} was removed from the party due to an account restriction."
+        if removed
+        else ""
+    )
 
 
 def party_image(request, code, round_id):

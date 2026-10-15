@@ -132,6 +132,13 @@ class PlayerAppeal(serializers.ModelSerializer):
 
 
 class PlayerNotice(serializers.ModelSerializer):
+    active = serializers.SerializerMethodField()
+
+    def get_active(self, obj):
+        from .services import active_sanctions
+
+        return active_sanctions(obj.user).filter(pk=obj.pk).exists()
+
     appeal = serializers.SerializerMethodField()
     reason = serializers.SerializerMethodField()
 
@@ -153,6 +160,7 @@ class PlayerNotice(serializers.ModelSerializer):
             "revoked_at",
             "acknowledged_at",
             "appeal",
+            "active",
         ]
 
 

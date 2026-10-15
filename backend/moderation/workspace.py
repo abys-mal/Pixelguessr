@@ -17,6 +17,9 @@ from .services import account_restrictions, active_sanctions
 
 
 def lock_player(pk):
+    from games.ranked import gate
+
+    gate()
     User.objects.filter(pk=pk).update(last_username_change=F("last_username_change"))
     return get_object_or_404(User, pk=pk)
 

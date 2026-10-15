@@ -14,11 +14,19 @@ export interface User {
   date_joined: string;
 }
 export interface Restrictions {
+  suspension?: boolean;
+  notice?: {
+    kind: 'warning' | 'probation' | 'suspension';
+    message: string;
+    expires_at: string | null;
+  } | null;
   blocked: boolean;
   probation: boolean;
   unacknowledged_warnings: string[];
 }
 export interface Session {
+  account_closed?: boolean;
+  closure_message?: string;
   user: User | null;
   restrictions: Restrictions | null;
 }

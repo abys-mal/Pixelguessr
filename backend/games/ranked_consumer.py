@@ -34,6 +34,9 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4403)
             return
         await self.accept()
+        if self.match_id:
+            self.group = f"ranked.{self.match_id}"
+            await self.channel_layer.group_add(self.group, self.channel_name)
         await self.send_json({"type": "state", "state": state})
         self.last_heartbeat = asyncio.get_running_loop().time()
         self.last_message = 0
@@ -87,6 +90,11 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
                 await self.timer
         if hasattr(self, "connection_id"):
             await database_sync_to_async(ranked.disconnect)(self.connection_id)
+        if hasattr(self, "group"):
+            await self.channel_layer.group_discard(self.group, self.channel_name)
+
+    async def ranked_changed(self, event):
+        await self.push()
 
     async def receive(self, text_data=None, bytes_data=None, **kwargs):
         if bytes_data is not None or len(text_data or "") > 2048:

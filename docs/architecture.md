@@ -3,19 +3,20 @@
 Native moderation uses the existing `moderation` app with a dedicated React
 layout at `/moderation`. Application permission `moderation.access_workspace`
 grants moderator access without Django Admin; only active superusers enter Admin.
-Sanction/appeal/report/access commands use per-player first-write locking and
-append audit activity. Sanction replacements reverse and link rather than edit
-history. `/account-notices` supports the normal account session and a separate
-15-minute password-bound notices-only proof for suspended accounts. That proof
-is accepted only by notices/appeals endpoints, never by game authentication.
-See [current moderation workflows](native-moderation.md).
+Sanction/appeal/report/access commands serialize through the ranked gate and player
+writer lock, append audit activity, and preserve history. Sanction writes also
+reconcile active games atomically. Normal-session Account Settings includes notices
+and appeals; suspension keeps authentication and singleplayer available. Account,
+party and ranked sockets publish public, permission-checked snapshots, with durable
+read/clock recovery. See [moderation workflows](native-moderation.md) and
+[current gameplay enforcement](moderation-enforcement.md).
 
 One Django application and one React application. Local Phase 3 uses SQLite, in-memory cache/channel services, and private local storage. PostgreSQL/Redis remain configured for future use. A lightweight `party_clock` management process advances unattended parties; no external task queue is needed.
 
 ```text
 Browser → Vite development proxy / production edge → Django ASGI
                                                     ├─ HTTP /api + /admin
-                                                    ├─ Channels party sockets + ranked participant sockets
+                                                    ├─ Channels account, party and ranked participant sockets
                                                     ├─ SQLite / PostgreSQL: durable domain data
                                                     ├─ In-memory / Redis: cache/throttles + channel layer
                                                     └─ Private filesystem / S3: normalized uploads

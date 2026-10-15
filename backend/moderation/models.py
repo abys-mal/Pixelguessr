@@ -160,6 +160,9 @@ class Sanction(models.Model):
         from accounts.models import User
 
         with transaction.atomic(using=kwargs.get("using") or self._state.db or "default"):
+            from games.ranked import gate
+
+            gate()
             # First write serializes per-player decisions on SQLite and PostgreSQL.
             User.objects.filter(pk=self.user_id).update(
                 last_username_change=F("last_username_change")
@@ -204,6 +207,11 @@ class Sanction(models.Model):
                         sanction=self,
                         appeal=appeal,
                     )
+            from .enforcement import enforce_locked, schedule
+
+            enforce_locked(self.user_id)
+
+            schedule(self.user_id)
 
 
 class Appeal(models.Model):

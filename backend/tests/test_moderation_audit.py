@@ -106,8 +106,10 @@ def test_reports_require_authentication_and_real_session_csrf(user, staff):
 def test_restricted_users_cannot_submit_reports(client, user, staff, kind):
     notice(user, staff, kind)
     client.force_authenticate(user)
-    assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == 403
-    assert not Report.objects.exists()
+    assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == (
+        403 if kind == "closed" else 201
+    )
+    assert Report.objects.exists() == (kind != "closed")
 
 
 def test_report_admin_permissions_resolution_and_audit(client, user, staff):
@@ -183,14 +185,14 @@ def test_scheduled_expired_and_revoked_sanctions(client, user, staff, monkeypatc
     )
     assert not account_restrictions(user)["blocked"]
     clock["now"] += timedelta(hours=1)
-    assert account_restrictions(user)["blocked"]
+    assert account_restrictions(user)["suspension"]
     assert (
         client.post(
             "/api/auth/login/",
             {"username": user.username, "password": "a-strong-unique-pass-734"},
             format="json",
         ).status_code
-        == 400
+        == 200
     )
     clock["now"] += timedelta(hours=1)
     assert not account_restrictions(user)["blocked"]

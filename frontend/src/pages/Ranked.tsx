@@ -10,11 +10,7 @@ export function RankedEntry() {
   const { user, loading, restrictions } = useAuth();
   if (loading) return <StatusMessage>Loading account…</StatusMessage>;
   if (!user) return <SignInPrompt feature="play Ranked Duel" />;
-  if (
-    restrictions?.blocked ||
-    restrictions?.probation ||
-    restrictions?.unacknowledged_warnings.length
-  )
+  if (restrictions?.blocked || restrictions?.probation || restrictions?.suspension)
     return (
       <StatusMessage error>
         Resolve your <Link to="/settings">account notice</Link> before playing Ranked Duel.
@@ -233,6 +229,7 @@ function RankedGame({ id }: { id: string }) {
         }
       }}
     >
+      {complete && state.message && <StatusMessage>{state.message}</StatusMessage>}
       <div className="game-heading">
         <p className="eyebrow">RANKED DUEL · FIRST TO 4</p>
         {!complete && (
