@@ -24,7 +24,11 @@ session cookies and CSRF. Workspace responses are private and non-cacheable.
 Workspace access requires the application permission or active superuser status.
 Non-administrators cannot view/moderate staff or reverse/replace closures. Player
 notices and appeal serializers exclude internal notes and staff audit data.
-Appeal eligibility includes its reason and next cooldown date. Existing report
+Appeal eligibility includes its reason and next cooldown date. Probation/suspension
+deadlines are 30/90 days from the most recent upheld appeal decision (`resolved_at`)
+for that player and kind. Pending/approved/changed appeals do not start cooldowns.
+`available_at` is null when no active upheld-decision cooldown exists. The normal
+signed-in player interface is `/account-notices`; no alternate authentication is used. Existing report
 creation, privacy, warning acknowledgment and throttling contracts remain intact.
 
 All paths have trailing slashes. JSON responses unless noted. Session cookies authenticate requests. Before an unsafe request, GET `/api/auth/csrf/` and send the returned `csrfToken` in `X-CSRFToken`; send cookies on the same origin. Registration/login rotate the CSRF secret. The React helper gets a fresh token for each mutation. There are no JWTs or tokens in browser localStorage.
@@ -68,7 +72,7 @@ No internal moderation notes are included. See [enforcement](moderation-enforcem
 
 ## Account settings
 
-`/settings/account` extends the existing settings screen; `/settings` remains available for account notices. Login continues to use usernames.
+`/settings/account` extends the existing settings screen; `/settings` remains an alias for settings with a link to Account Notices. Login continues to use usernames.
 
 | Method | Path | Body / result |
 | --- | --- | --- |

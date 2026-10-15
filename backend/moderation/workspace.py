@@ -54,23 +54,31 @@ def eligibility(user, sanction):
                 "available_at": None,
             }
     else:
-        prior = user.appeals.filter(kind=sanction.kind).order_by("-created_at").first()
-        if prior:
-            available = prior.created_at + timedelta(
-                days=30 if sanction.kind == "probation" else 90
+        upheld = (
+            user.appeals.filter(
+                kind=sanction.kind, status=Appeal.Status.UPHELD, resolved_at__isnull=False
             )
-            if user.appeals.filter(kind=sanction.kind, status="pending").exists():
-                return {
-                    "eligible": False,
-                    "detail": "An appeal of this type is already pending.",
-                    "available_at": available.isoformat(),
-                }
-            if now < available:
-                return {
-                    "eligible": False,
-                    "detail": "The appeal cooldown has not ended.",
-                    "available_at": available.isoformat(),
-                }
+            .order_by("-resolved_at", "-id")
+            .first()
+        )
+        available = (
+            upheld.resolved_at + timedelta(days=30 if sanction.kind == "probation" else 90)
+            if upheld
+            else None
+        )
+        cooling_down = available is not None and now < available
+        if user.appeals.filter(kind=sanction.kind, status=Appeal.Status.PENDING).exists():
+            return {
+                "eligible": False,
+                "detail": "An appeal of this type is already pending.",
+                "available_at": available.isoformat() if cooling_down else None,
+            }
+        if cooling_down:
+            return {
+                "eligible": False,
+                "detail": "The appeal cooldown has not ended since the last upheld decision.",
+                "available_at": available.isoformat(),
+            }
     return {"eligible": True, "detail": "You can appeal this sanction.", "available_at": None}
 
 

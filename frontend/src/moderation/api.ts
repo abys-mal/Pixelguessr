@@ -73,3 +73,9 @@ export type Inbox = Page<Report> | Page<Appeal>;
 export const label = (value: string) => value.replaceAll('_', ' ');
 export const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : 'No expiry';
+export const expiry = (sanction: Pick<Sanction, 'kind' | 'expires_at'>) =>
+  sanction.expires_at
+    ? date(sanction.expires_at)
+    : sanction.kind === 'closed'
+      ? 'Permanent'
+      : 'Indefinite';

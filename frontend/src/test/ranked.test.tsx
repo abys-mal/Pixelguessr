@@ -214,7 +214,7 @@ describe('Ranked duel', () => {
     expect(rankedApi.leave).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Leave match' }));
     await screen.findByRole('heading', { name: 'Defeat' });
-    expect(screen.getByRole('heading', { name: 'Defeat' })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Defeat' })).toHaveFocus());
     expect(screen.getByText('-20 Elo')).toBeInTheDocument();
     expect(screen.getByText('+20 Elo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Play Again' })).toHaveAttribute('href', '/ranked');

@@ -7,6 +7,7 @@ import {
   post,
   label,
   date,
+  expiry,
   type Kind,
   type Sanction,
   type PlayerDetail as Detail,
@@ -36,10 +37,27 @@ function SanctionForm({
         .toISOString()
         .slice(0, 16)
     : '';
+  const [duration, setDuration] = useState<'indefinite' | 'fixed'>(
+    original?.expires_at ? 'fixed' : 'indefinite',
+  );
+  const [initialExpiry, setInitialExpiry] = useState(localExpiry);
+  const [minimumExpiry] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
     const form = new FormData(event.currentTarget);
+    const needsExpiry = !['warning', 'closed'].includes(kind) && duration === 'fixed';
+    const selectedExpiry = needsExpiry ? new Date(String(form.get('expiry') ?? '')) : null;
+    if (
+      selectedExpiry &&
+      (!Number.isFinite(selectedExpiry.getTime()) || selectedExpiry <= new Date())
+    ) {
+      setError('Choose an expiration date in the future.');
+      return;
+    }
     setPending(true);
     setError('');
     try {
@@ -52,10 +70,7 @@ function SanctionForm({
           category: form.get('category'),
           reason: form.get('reason'),
           internal_note: form.get('internal_note'),
-          expires_at:
-            ['warning', 'closed'].includes(kind) || !form.get('expiry')
-              ? null
-              : new Date(String(form.get('expiry'))).toISOString(),
+          expires_at: selectedExpiry?.toISOString() ?? null,
         },
       );
       saved();
@@ -83,7 +98,11 @@ function SanctionForm({
                   name="kind"
                   value={value}
                   checked={kind === value}
-                  onChange={() => setKind(value)}
+                  onChange={() => {
+                    setKind(value);
+                    setDuration('indefinite');
+                    setInitialExpiry('');
+                  }}
                 />
                 {value === 'closed' ? 'Closure' : label(value)}
               </label>
@@ -92,11 +111,11 @@ function SanctionForm({
         </fieldset>
         <p className="mod-muted">
           {kind === 'warning'
-            ? 'Warnings expire after 90 days. Acknowledgment lifts the warning restriction.'
+            ? 'Warnings expire after 90 days. Acknowledgment clears the notice; gameplay stays available.'
             : kind === 'probation'
               ? 'Blocks ranked play and image submissions.'
               : kind === 'suspension'
-                ? 'Blocks account sign-in and existing game access.'
+                ? 'Blocks parties, ranked play and image submissions. Sign-in and singleplayer stay available.'
                 : 'Permanently blocks account access. Only an administrator can reverse closure.'}
         </p>
         <label>
@@ -108,10 +127,35 @@ function SanctionForm({
           </select>
         </label>
         {!['warning', 'closed'].includes(kind) && (
-          <label>
-            Expires at <span>(optional · your local time)</span>
-            <input type="datetime-local" name="expiry" defaultValue={localExpiry} />
-          </label>
+          <>
+            <label>
+              Duration
+              <select
+                value={duration}
+                onChange={(event) => {
+                  setDuration(event.target.value as 'indefinite' | 'fixed');
+                  setInitialExpiry('');
+                }}
+              >
+                <option value="indefinite">Indefinite</option>
+                <option value="fixed">Fixed duration</option>
+              </select>
+            </label>
+            {duration === 'fixed' ? (
+              <label>
+                Expires at <span>(your local time)</span>
+                <input
+                  type="datetime-local"
+                  name="expiry"
+                  required
+                  defaultValue={initialExpiry}
+                  min={minimumExpiry}
+                />
+              </label>
+            ) : (
+              <p className="mod-muted">Indefinite — remains active until reversed.</p>
+            )}
+          </>
         )}
         <label>
           Public reason <span>(optional · visible to the player)</span>
@@ -237,7 +281,7 @@ export function PlayerDetail({ id }: { id: string }) {
               </p>
             )}
             <p className="mod-muted">
-              {date(s.starts_at)} · {date(s.expires_at)}
+              {date(s.starts_at)} · {expiry(s)}
               {s.acknowledged_at ? ' · Acknowledged' : ''}
             </p>
             {canAct && (user?.administrator || s.kind !== 'closed') && (

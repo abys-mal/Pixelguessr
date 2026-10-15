@@ -103,7 +103,7 @@ it.each(['warning', 'probation', 'suspension'] as const)(
     expect(banner).toHaveTextContent('Expires');
     expect(screen.getByRole('link', { name: 'View details →' })).toHaveAttribute(
       'href',
-      '/settings/account#account-notices',
+      '/account-notices',
     );
     expect(screen.getByRole('link', { name: /^player/ })).toHaveAttribute('href', '/profile');
     act(() => receive(clean));
@@ -111,15 +111,17 @@ it.each(['warning', 'probation', 'suspension'] as const)(
   },
 );
 
-it('keeps suspension account settings accessible and warnings out of gameplay gates', async () => {
-  page('/settings/account#account-notices');
-  await screen.findByRole('heading', { name: 'Account settings' });
-  act(() => receive(notice('suspension')));
-  expect(screen.getByRole('heading', { name: 'Account settings' })).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Account notices' })).toBeInTheDocument();
-  expect(screen.queryByRole('textbox', { name: 'Username' })).not.toBeInTheDocument();
-  await waitFor(() => expect(document.getElementById('account-notices')).toHaveFocus());
-});
+it.each(['probation', 'suspension'] as const)(
+  'keeps the normal notices page accessible during %s',
+  async (kind) => {
+    page('/account-notices');
+    await screen.findByRole('heading', { name: 'Account notices', level: 1 });
+    act(() => receive(notice(kind)));
+    expect(screen.getByRole('heading', { name: 'Account notices', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Active sanctions' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Username' })).not.toBeInTheDocument();
+  },
+);
 
 it('replaces signed-in access with a clear closure message from a live event', async () => {
   page();

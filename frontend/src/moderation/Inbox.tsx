@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Page } from '../api';
-import { root, post, label, date, type Appeal, type Report } from './api';
+import { root, post, label, date, expiry, type Appeal, type Report } from './api';
 import { Dialog, Feedback, Heading, Loading, Pager } from './components';
 import { PlayerDetail } from './Player';
 import { useData } from './useData';
@@ -128,7 +128,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
                     )}
                     <small>
                       Issued by @{item.sanction.issued_by} · {date(item.sanction.starts_at)} ·{' '}
-                      {date(item.sanction.expires_at)}
+                      {expiry(item.sanction)}
                     </small>
                   </div>
                 )}

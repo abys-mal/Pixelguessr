@@ -82,11 +82,15 @@ const submitForm = () =>
 const calls = () =>
   vi.mocked(api).mock.calls.filter(([path]) => path.startsWith('/api/auth/change-'));
 
-it('renders existing notices/profile settings and three protected actions without password inputs', async () => {
+it('renders profile settings, notices navigation and three protected actions without password inputs', async () => {
   page();
   await screen.findByRole('button', { name: 'Change Email' });
-  for (const name of ['Username', 'Email', 'Password', 'Profile details', 'Account notices'])
+  for (const name of ['Username', 'Email', 'Password', 'Profile details'])
     expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Account notices & appeals →' })).toHaveAttribute(
+    'href',
+    '/account-notices',
+  );
   expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument();
   expect(
     screen.getByText('player@example.test', { selector: '.account-value' }),

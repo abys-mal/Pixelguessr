@@ -5,7 +5,7 @@ layout at `/moderation`. Application permission `moderation.access_workspace`
 grants moderator access without Django Admin; only active superusers enter Admin.
 Sanction/appeal/report/access commands serialize through the ranked gate and player
 writer lock, append audit activity, and preserve history. Sanction writes also
-reconcile active games atomically. Normal-session Account Settings includes notices
+reconcile active games atomically. Normal-session Account Notices (`/account-notices`) includes sanctions
 and appeals; suspension keeps authentication and singleplayer available. Account,
 party and ranked sockets publish public, permission-checked snapshots, with durable
 read/clock recovery. See [moderation workflows](native-moderation.md) and
@@ -45,7 +45,7 @@ GuestIdentity is bound to the Django server session, with a seven-day identity/s
 
 Participant enforces exactly one account or guest and uniqueness within a match. RoundPlayerState holds signed round scores, solve time (spectator state), and cooldown. Participant holds a nonnegative cumulative score. Guess sequence is unique per round/player. Ranked services enforce registered membership and the one-guess limit under the durable writer gate; foundation model `clean()` also describes identity constraints. Django does not call `clean()` on arbitrary `save()`/`objects.create()`. Singleplayer services validate state in atomic transactions. A first-write match UPDATE locks concurrent guesses before reads, including on SQLite where select_for_update alone has no effect. Unique request IDs make retries idempotent. Party services validate membership and cooldowns under the same first-write locking pattern; ranked services acquire a durable singleton writer gate before mutable reads, making queue pairing, winner selection and Elo application atomic across workers.
 
-Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, but acknowledgment lifts the warning gate. Probation disables submissions and disables ranked. Suspension/closure deny authentication and retrieval of existing session users via the custom auth backend. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
+Moderation checks start times, expiry, and audited revocation. Warnings remain active after acknowledgment until their 90-day expiry or revocation, and warnings never restrict gameplay. Probation disables submissions and ranked. Suspension blocks multiplayer and submissions while preserving normal login and singleplayer. Only closure denies normal authentication. Admin prevents deletion or editing of issued sanctions and requires superuser status to reverse closure.
 
 ## Shared multiplayer implementation contract
 

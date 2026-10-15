@@ -624,6 +624,8 @@
 .mod-empty {
   color: var(--mod-muted);
   font-size: 14px;
+}
+.mod-empty:not(.mod-card) {
   padding: 24px 0;
 }
 .mod-empty h2 {

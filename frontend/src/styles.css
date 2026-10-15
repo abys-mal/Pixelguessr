@@ -69,6 +69,9 @@
   font-size: 13px;
   font-weight: 600;
 }
+.account-notices-link {
+  margin-top: 28px;
+}
 .account-notices {
   margin-top: 28px;
   scroll-margin-top: 24px;
@@ -80,6 +83,9 @@
 .account-notices h3 {
   font-size: 20px;
   text-transform: capitalize;
+}
+.account-notice-list + h2 {
+  margin-top: 28px;
 }
 .account-notices .notice {
   display: grid;

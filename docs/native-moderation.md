@@ -47,7 +47,10 @@ the public reason is empty. Warnings expire after 90 days; probation/suspension
 may have a chosen future expiry or no expiry. Closure has no expiry. Unlimited
 warnings are allowed; other kinds permit one active sanction each. Scheduled
 non-warning sanctions also reserve that type to prevent future overlap.
-Different kinds may coexist. No mandatory escalation exists.
+Different kinds may coexist. No mandatory escalation exists. Probation and
+suspension forms explicitly offer Indefinite or Fixed duration; switching modes
+clears the prior expiration. Indefinite sends `expires_at: null`. Replacements
+prepopulate the original duration and may freely change it before submission.
 
 Reversal requires confirmation and preserves the original record. Replacement
 prepopulates its current properties, atomically reverses the original and creates
@@ -55,7 +58,7 @@ a linked successor. Replacing a closure also requires an administrator because
 replacement reverses the original. Moderators cannot search/review or moderate
 staff, native moderators or administrators; administrators can.
 
-Players open Account Settings at `/settings/account#account-notices` using their
+Players open Account Notices at `/account-notices` using their
 normal authenticated session. Suspension preserves login, settings, appeals and
 singleplayer; probation also preserves parties. Warnings only create notices.
 Closure blocks authenticated access and has no appeal. There is no separate
@@ -64,7 +67,11 @@ notice-login endpoint or limited authentication session. See
 active-game transitions, live updates and recovery behavior.
 
 Warnings have one appeal per individual sanction, even after a denial. Probation
-appeals have a rolling 30-day submission cooldown; suspension appeals have 90 days.
+appeals have a 30-day cooldown after an upheld decision; suspension appeals have
+90 days. Both are immediately appealable after issuance. The deadline uses the
+latest upheld appeal’s `resolved_at` for that player and type, never the sanction
+or submission time. Approved and changed appeals do not start a cooldown. Pending
+appeals block duplicates without creating a cooldown date.
 These cooldowns and the one-pending-appeal limit follow the player and sanction
 type across replacement/reversal. A pending appeal continues to block further
 appeals after the cooldown. Expired/reversed sanctions are not appealable.
@@ -92,15 +99,16 @@ the normal development database and actual users separate.
 2. Search a player in Players. Issue a warning with both optional fields blank,
    then another warning. Confirm both appear. Add probation; a second probation
    must be rejected. Player notices must never expose an internal note.
-3. As the player, open Account settings → Account notices. Submit an explanation for the warning.
+3. As the player, open Account Notices using its link in Account Settings. Submit an explanation for the warning.
    As moderator, uphold it in Appeals. The player cannot appeal that warning again;
    independently reversing it from Players must still work.
 4. Appeal probation, then replace it in Players. Confirm the predecessor remains,
-   the successor is linked, the pending appeal becomes Sanction changed, and the
-   original submission cooldown remains in effect. Activity records every actor/time.
+   the successor is linked, the pending appeal becomes Sanction changed, and any
+   existing upheld-decision cooldown remains in effect; the changed pending appeal
+   does not create one. Activity records every actor/time.
 5. Suspend the player while already signed in. Normal sign-in, settings and
    singleplayer remain available. Parties, ranked and submissions are denied.
-   Submit an appeal in Account settings, reverse it from Appeals, and verify new
+   Submit an appeal in Account Notices, reverse it from Appeals, and verify new
    multiplayer entry works without losing sanction history.
 6. Close the player account. Confirm closure cannot be appealed or reversed/replaced
    by a moderator. As administrator reverse it; the original record remains.

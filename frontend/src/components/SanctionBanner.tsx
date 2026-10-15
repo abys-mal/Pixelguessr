@@ -21,7 +21,7 @@ export function SanctionBanner() {
         <p>{notice.message}</p>
         {notice.expires_at && <small>Expires {new Date(notice.expires_at).toLocaleString()}</small>}
       </div>
-      <Link to="/settings/account#account-notices">View details →</Link>
+      <Link to="/account-notices">View details →</Link>
     </aside>
   );
 }

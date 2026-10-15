@@ -94,7 +94,7 @@ Two registered accounts checklist (separate browser profiles, or localhost and 1
 
 The database gate deliberately serializes ranked decisions for correctness on SQLite and PostgreSQL. Queue scans and once-per-second personalized state/reveal rendering are suitable for local use; load-test and optimize them before public scale. Redis configuration is preserved, but correctness does not rely on an in-memory Channels group. Production workers share database state; isolated in-memory channels should remain development-only. Clock recovery is durable, while results may arrive one polling tick late and browser countdowns are cosmetic. Server-observed half-open disconnects include the documented presence lease before grace.
 
-Linux/PostgreSQL/Redis infrastructure is not available in this local Windows verification. Existing CI configuration can exercise them when you push. Add production monitoring, supervised clock processes, compositor load testing and edge rate controls next. Account email verification/recovery and production deployment remain separate future work. Normal-session appeals are available in Account Settings.
+Linux/PostgreSQL/Redis infrastructure is not available in this local Windows verification. Existing CI configuration can exercise them when you push. Add production monitoring, supervised clock processes, compositor load testing and edge rate controls next. Account email verification/recovery and production deployment remain separate future work. Normal-session appeals are available on Account Notices (`/account-notices`).
 
 ## Ranked synchronization (Phase 4.1)
 

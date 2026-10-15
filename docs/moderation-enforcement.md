@@ -51,20 +51,23 @@ running for scheduled game transitions without connected clients.
 
 ## Account interface and authentication
 
-Account Settings (`/settings/account#account-notices`) includes full public sanction
+Account Notices (`/account-notices`) uses the normal authenticated session and includes public sanction
 history, dates, acknowledgment, eligible appeals and appeal decisions. Private
 moderator notes remain staff-only. Existing warning/30-day probation/90-day suspension
-appeal rules follow the player and type across replacements. Closure is nonappealable
+appeal cooldowns begin at the latest upheld decision timestamp and follow the
+player and type across replacements. Pending appeals block duplicates without
+starting cooldowns; approved/changed appeals do not start them. Closure is nonappealable
 and only an administrator may reverse it.
 
-Suspension keeps the normal login/session. The separate notice-login endpoint,
-limited proof implementation and `/account-notices` page are removed. Closed-account
+Suspension keeps the normal login/session. The separate notice-login endpoint
+and limited proof implementation are removed. The dedicated Account Notices page
+needs no second login; Account Settings links to it without duplicating its forms. Closed-account
 credentials are verified before displaying `Your account has been closed.` Existing
 closed sessions receive the same message and cannot fall back to anonymous gameplay
 without signing out. This is an account restriction, not a device ban.
 
 Homepage banners prioritize suspension, probation, then unacknowledged warnings,
-show expiry when present, and link to settings. Reports/Appeals use matching inbox
+show expiry when present, and link to Account Notices. Reports/Appeals use matching inbox
 alignment, spacing and responsive grids without redesigning the workspace.
 
 ## Verification and manual playtest
@@ -79,7 +82,7 @@ Use synthetic accounts in a separate development database:
 
 1. Sign in as a player and moderator in separate browser profiles. Keep the player's
    homepage open. Issue a warning: the banner appears without refresh, gameplay stays
-   available. Acknowledge in Settings; the banner disappears and history remains.
+   available. Acknowledge in Account Notices; the banner disappears and history remains.
 2. Start a duel. Apply probation/suspension/closure. Both clients see the forfeit,
    the opponent wins and each rating changes once, including after reconnect/refresh.
 3. Suspend/close a party host: everyone leaves with a host-specific explanation.

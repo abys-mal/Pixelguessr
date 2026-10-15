@@ -205,7 +205,9 @@ def test_replace_is_linked_and_marks_appeal_changed(moderator, user):
         and replacement.replaces_id == original.pk
     )
     assert appeal.status == "sanction_changed" and appeal.resolved_by_id == moderator.pk
-    assert not eligibility(user, replacement)["eligible"]
+    assert eligibility(user, replacement)[
+        "eligible"
+    ]  # Changed pending appeals never start cooldowns.
     assert Activity.objects.filter(user=user).count() == 5
 
 
@@ -262,25 +264,84 @@ def test_warning_appeal_one_per_record_and_no_second_after_review(moderator, use
 
 
 @pytest.mark.parametrize("kind,days", [("probation", 30), ("suspension", 90)])
-def test_rolling_cooldown_pending_limit_and_replacement(moderator, user, kind, days):
+def test_cooldown_starts_at_upheld_decision_and_survives_replacement(
+    moderator, user, client, monkeypatch, kind, days
+):
+    clock = {"now": timezone.now() + timedelta(seconds=1)}
+    monkeypatch.setattr(timezone, "now", lambda: clock["now"])
     original = sanction(moderator, user, kind)
+    assert eligibility(user, original) == {
+        "eligible": True,
+        "detail": "You can appeal this sanction.",
+        "available_at": None,
+    }
     appeal = submit_appeal(user, original.pk, "Please review.")
-    Appeal.objects.filter(pk=appeal.pk).update(created_at=timezone.now() - timedelta(days=days + 1))
-    assert not eligibility(user, original)["eligible"]  # Pending even after cooldown.
+    # An old pending submission has no cooldown date, even after more than 30/90 days.
+    clock["now"] += timedelta(days=days + 7)
+    assert eligibility(user, original)["available_at"] is None
+    assert "pending" in eligibility(user, original)["detail"]
+    with pytest.raises(ValidationError, match="pending"):
+        submit_appeal(user, original.pk, "Duplicate.")
     review_appeal(moderator, appeal.pk, "uphold")
-    assert eligibility(user, original)["eligible"]
-    Appeal.objects.filter(pk=appeal.pk).update(
-        created_at=timezone.now() - timedelta(days=days) + timedelta(minutes=2)
-    )
-    assert not eligibility(user, original)["eligible"]
+    appeal.refresh_from_db()
+    assert appeal.resolved_at == clock["now"]
+    deadline = appeal.resolved_at + timedelta(days=days)
+    allowed = eligibility(user, original)
+    assert not allowed["eligible"] and allowed["available_at"] == deadline.isoformat()
+    authenticate(client, user)
+    row = client.get("/api/moderation/notices/").json()["sanctions"][0]
+    assert row["appeal"] == allowed
     replacement = issue(
         moderator, user.pk, {"kind": kind, "category": "fair_play"}, replacing=original.pk
     )
-    assert not eligibility(user, replacement)["eligible"]
-    Appeal.objects.filter(pk=appeal.pk).update(
-        created_at=timezone.now() - timedelta(days=days, seconds=1)
-    )
+    assert eligibility(user, replacement)["available_at"] == deadline.isoformat()
+    clock["now"] = deadline - timedelta(microseconds=1)
+    with pytest.raises(ValidationError, match="cooldown"):
+        submit_appeal(user, replacement.pk, "Too early.")
+    clock["now"] = deadline
     assert submit_appeal(user, replacement.pk, "Cooldown ended.")
+    assert eligibility(user, replacement)["available_at"] is None
+
+
+@pytest.mark.parametrize("kind", ["probation", "suspension"])
+def test_approved_and_changed_appeals_do_not_start_cooldown(moderator, user, kind):
+    original = sanction(moderator, user, kind)
+    appeal = submit_appeal(user, original.pk, "Please review.")
+    review_appeal(moderator, appeal.pk, "reverse")
+    appeal.refresh_from_db()
+    assert appeal.status == "reversed" and appeal.resolved_at
+    replacement = sanction(moderator, user, kind)
+    assert eligibility(user, replacement)["eligible"]
+    pending = submit_appeal(user, replacement.pk, "Please review again.")
+    newest = issue(
+        moderator, user.pk, {"kind": kind, "category": "fair_play"}, replacing=replacement.pk
+    )
+    pending.refresh_from_db()
+    assert pending.status == "sanction_changed"
+    assert eligibility(user, newest)["eligible"]
+    assert eligibility(user, newest)["available_at"] is None
+
+
+@pytest.mark.parametrize("kind,days", [("probation", 30), ("suspension", 90)])
+def test_latest_upheld_decision_controls_only_its_sanction_type(moderator, user, kind, days):
+    notice = sanction(moderator, user, kind)
+    now = timezone.now()
+    # Decision chronology, not submission chronology, determines the cooldown.
+    for submitted, decided in [(20, 2), (10, 5)]:
+        Appeal.objects.create(
+            user=user,
+            sanction=notice,
+            kind=kind,
+            explanation="Historical decision.",
+            status="upheld",
+            created_at=now - timedelta(days=submitted),
+            resolved_at=now - timedelta(days=decided),
+            resolved_by=moderator,
+        )
+    other = sanction(moderator, user, "suspension" if kind == "probation" else "probation")
+    other_appeal = submit_appeal(user, other.pk, "Different type.")
+    review_appeal(moderator, other_appeal.pk, "uphold")
+    assert eligibility(user, notice)["available_at"] == (now + timedelta(days=days - 2)).isoformat()
 
 
 def test_appeal_resolution_reverses_and_prevents_double_review(moderator, user):
@@ -491,3 +552,32 @@ def test_concurrent_workspace_decisions(moderator, user, action):
         assert user.sanctions.filter(revoked_at__isnull=True).count() == 1
     else:
         assert user.sanctions.filter(revoked_at__isnull=True).count() == 0
+
+
+@pytest.mark.parametrize("kind", ["probation", "suspension"])
+def test_api_supports_indefinite_and_fixed_duration_replacements(client, moderator, user, kind):
+    authenticate(client, moderator)
+    response = client.post(
+        ROOT + f"players/{user.pk}/sanctions/", {"kind": kind, "expires_at": None}, format="json"
+    )
+    assert response.status_code == 201 and response.json()["expires_at"] is None
+    original = response.json()["id"]
+    fixed = timezone.now() + timedelta(days=2)
+    response = client.post(
+        ROOT + f"sanctions/{original}/replace/",
+        {"kind": kind, "expires_at": fixed.isoformat()},
+        format="json",
+    )
+    assert response.status_code == 201
+    fixed_id = response.json()["id"]
+    assert Sanction.objects.get(pk=fixed_id).expires_at == fixed
+    response = client.post(
+        ROOT + f"sanctions/{fixed_id}/replace/", {"kind": kind, "expires_at": None}, format="json"
+    )
+    assert response.status_code == 201 and response.json()["expires_at"] is None
+    authenticate(client, user)
+    notices = client.get("/api/moderation/notices/").json()["sanctions"]
+    assert len(notices) == 3
+    active = next(row for row in notices if row["active"])
+    assert active["expires_at"] is None and active["appeal"]["eligible"]
+    assert Activity.objects.filter(user=user, action="sanction_replaced").count() == 2

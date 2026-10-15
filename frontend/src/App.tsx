@@ -8,6 +8,7 @@ import { Singleplayer } from './pages/Singleplayer';
 import { Mode } from './pages/Mode';
 import { AuthPage } from './pages/Auth';
 import { Profile, Settings } from './pages/Account';
+import { Notices } from './pages/Notices';
 import { Library } from './pages/Library';
 import { Submit } from './pages/Submit';
 import { About, NotFound } from './pages/Info';
@@ -43,6 +44,7 @@ export function App() {
         <Route path="profile" element={<Profile />} />
         <Route path="settings/account" element={<Settings />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="account-notices" element={<Notices />} />
         <Route path="library" element={<Library />} />
         <Route path="submit" element={<Submit />} />
         <Route path="leaderboards" element={<Leaderboards />} />

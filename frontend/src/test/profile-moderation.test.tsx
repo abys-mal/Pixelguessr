@@ -122,7 +122,7 @@ it('places sign out next to the username on the own profile and retains settings
 
 it('removes the redundant settings logout control', async () => {
   page('/settings/account');
-  await screen.findByRole('heading', { name: 'Account notices' });
+  await screen.findByRole('link', { name: 'Account notices & appeals →' });
   expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
 });
 
@@ -182,7 +182,7 @@ it('reports failed logout without pretending the account is signed out', async (
 
 it('acknowledges a warning through the existing API and refreshes the restriction banner', async () => {
   current.restrictions!.unacknowledged_warnings = ['warning-id'];
-  page('/settings/account');
+  page('/account-notices');
   await screen.findByRole('heading', { name: 'Account notices' });
   fireEvent.click(await screen.findByRole('button', { name: 'Acknowledge warning' }));
   await screen.findByText('Warning acknowledged.');

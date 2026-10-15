@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { AccountSecurity } from './AccountSecurity';
 import { RankedProfile } from './RankedPublic';
 import { api } from '../api';
 import { useAuth } from '../auth/context';
 import { PageHeading, SignInPrompt, StatusMessage } from '../components/ui';
-import { AccountNotices } from '../components/AccountNotices';
 
 export function Profile() {
   const { user, loading } = useAuth();
@@ -67,7 +66,9 @@ export function Settings() {
           </button>
         </form>
       </div>
-      <AccountNotices />
+      <p className="account-notices-link">
+        <Link to="/account-notices">Account notices &amp; appeals →</Link>
+      </p>
       {error && <StatusMessage error>{error}</StatusMessage>}
       {message && <StatusMessage>{message}</StatusMessage>}
     </>

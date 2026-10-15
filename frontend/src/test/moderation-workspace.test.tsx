@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -5,6 +6,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { api, type Session, type User } from '../api';
 import { AuthProvider } from '../auth/AuthProvider';
+
+const moderationCss = readFileSync('src/moderation/moderation.css', 'utf8');
 
 vi.mock('../api', async (original) => ({ ...(await original<object>()), api: vi.fn() }));
 const player = {
@@ -293,9 +296,9 @@ it('reports API failures without pretending a reversal succeeded', async () => {
   expect(screen.queryByText('Changes saved.')).not.toBeInTheDocument();
 });
 
-it('submits an explanation-required appeal inside normal account settings', async () => {
+it('submits an explanation-required appeal on the normal-session notices page', async () => {
   current.user = { ...moderator, moderation_access: false };
-  page('/settings/account');
+  page('/account-notices');
   await userEvent.click(await screen.findByRole('button', { name: 'Appeal this sanction' }));
   const submit = screen.getByRole('button', { name: 'Submit appeal' });
   expect(submit).toBeDisabled();
@@ -311,3 +314,191 @@ it('submits an explanation-required appeal inside normal account settings', asyn
     screen.queryByLabelText('Password', { exact: true, selector: 'input' }),
   ).not.toBeInTheDocument();
 });
+
+it.each(['reports', 'appeals'])(
+  'keeps %s empty cards padded by the shared card rule',
+  async (kind) => {
+    const original = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation((path, options) =>
+      path.startsWith(`/api/moderation/workspace/${kind}/?`)
+        ? Promise.resolve(pageData([]))
+        : original(path, options),
+    );
+    const style = document.createElement('style');
+    style.textContent = moderationCss;
+    document.head.append(style);
+    try {
+      page(`/moderation/${kind}`);
+      const heading = await screen.findByRole('heading', { name: 'All clear.' });
+      const card = heading.parentElement!;
+      expect(within(card).getByText(`No ${kind} need review right now.`)).toBeInTheDocument();
+      const padding = getComputedStyle(card);
+      expect(parseFloat(padding.paddingLeft)).toBeGreaterThan(0);
+      expect(padding.paddingLeft).toBe(padding.paddingRight);
+      expect(padding.paddingTop).toBe(padding.paddingLeft);
+      expect(padding.paddingBottom).toBe(padding.paddingLeft);
+    } finally {
+      style.remove();
+    }
+  },
+);
+
+it.each(['probation', 'suspension'])(
+  'can repeatedly switch fixed and indefinite %s before issuing',
+  async (kind) => {
+    page('/moderation/players/player-id');
+    await userEvent.click(await screen.findByRole('button', { name: 'Issue sanction' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await userEvent.click(dialog.getByRole('radio', { name: kind }));
+    const duration = dialog.getByRole('combobox', { name: 'Duration' });
+    expect(duration).toHaveValue('indefinite');
+    for (let i = 0; i < 2; i++) {
+      await userEvent.selectOptions(duration, 'fixed');
+      const expiry = dialog.getByLabelText(/Expires at/);
+      expect(expiry).toHaveValue('');
+      expect(expiry).toBeRequired();
+      fireEvent.change(expiry, { target: { value: '2027-06-01T12:30' } });
+      await userEvent.selectOptions(duration, 'indefinite');
+      expect(dialog.queryByLabelText(/Expires at/)).not.toBeInTheDocument();
+    }
+    await userEvent.click(dialog.getByRole('button', { name: 'Issue sanction' }));
+    await screen.findByText('Sanction saved.');
+    const request = seen.find(
+      ([path, options]) => path.endsWith('/player-id/sanctions/') && options?.method === 'POST',
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ kind, expires_at: null });
+  },
+);
+
+it.each(['probation', 'suspension'])(
+  'prepopulates fixed %s replacement and clears expiry for indefinite',
+  async (kind) => {
+    warning.kind = kind;
+    page('/moderation/players/player-id');
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace sanction' }));
+    const dialog = within(screen.getByRole('dialog'));
+    const duration = dialog.getByRole('combobox', { name: 'Duration' });
+    expect(duration).toHaveValue('fixed');
+    expect(dialog.getByLabelText(/Expires at/)).not.toHaveValue('');
+    await userEvent.selectOptions(duration, 'indefinite');
+    await userEvent.click(dialog.getByRole('button', { name: 'Replace sanction' }));
+    await screen.findByText('Sanction saved.');
+    const request = seen.find(([path]) => path.endsWith('/warning-id/replace/'));
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ kind, expires_at: null });
+  },
+);
+
+it.each(['probation', 'suspension'])(
+  'prepopulates indefinite %s replacement and submits a fresh fixed expiry',
+  async (kind) => {
+    warning.kind = kind;
+    warning.expires_at = null;
+    page('/moderation/players/player-id');
+    await screen.findByText('Indefinite', { exact: false });
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace sanction' }));
+    const dialog = within(screen.getByRole('dialog'));
+    const duration = dialog.getByRole('combobox', { name: 'Duration' });
+    expect(duration).toHaveValue('indefinite');
+    await userEvent.selectOptions(duration, 'fixed');
+    const field = dialog.getByLabelText(/Expires at/);
+    expect(field).toHaveValue('');
+    await userEvent.click(dialog.getByRole('button', { name: 'Replace sanction' }));
+    expect(field).toBeInvalid();
+    expect(seen.some(([path]) => path.endsWith('/warning-id/replace/'))).toBe(false);
+    fireEvent.change(field, { target: { value: '2027-06-01T12:30' } });
+    await userEvent.click(dialog.getByRole('button', { name: 'Replace sanction' }));
+    await screen.findByText('Sanction saved.');
+    const request = seen.find(([path]) => path.endsWith('/warning-id/replace/'));
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      kind,
+      expires_at: new Date('2027-06-01T12:30').toISOString(),
+    });
+  },
+);
+
+it.each(['probation', 'suspension'])(
+  'shows %s upheld-decision cooldown and its next eligibility date',
+  async (kind) => {
+    notice.kind = kind;
+    notice.expires_at = null;
+    notice.appeal = {
+      eligible: false,
+      detail: 'The appeal cooldown has not ended since the last upheld decision.',
+      available_at: '2027-03-15T12:00:00Z',
+    };
+    page('/account-notices');
+    await screen.findByRole('heading', { name: 'Account notices', level: 1 });
+    const region = await screen.findByRole('region', { name: 'Sanctions and appeals' });
+    expect(await within(region).findByText(/last upheld decision/)).toHaveTextContent(
+      new Date('2027-03-15T12:00:00Z').toLocaleString(),
+    );
+    expect(within(region).getByText(/Indefinite/)).toBeInTheDocument();
+    expect(
+      within(region).queryByRole('button', { name: 'Appeal this sanction' }),
+    ).not.toBeInTheDocument();
+    expect(within(region).queryByText('Staff context.')).not.toBeInTheDocument();
+  },
+);
+
+it('shows pending appeals without inventing a cooldown date', async () => {
+  notice.kind = 'suspension';
+  notice.appeal = {
+    eligible: false,
+    detail: 'An appeal of this type is already pending.',
+    available_at: null,
+  };
+  page('/account-notices');
+  await screen.findByText('An appeal of this type is already pending.');
+  expect(screen.queryByText(/Next eligibility:/)).not.toBeInTheDocument();
+});
+
+it('links settings to notices without duplicating the full interface', async () => {
+  page('/settings/account');
+  expect(await screen.findByRole('link', { name: 'Account notices & appeals →' })).toHaveAttribute(
+    'href',
+    '/account-notices',
+  );
+  expect(screen.queryByRole('heading', { name: 'Active sanctions' })).not.toBeInTheDocument();
+  expect(seen.some(([path]) => path === '/api/moderation/notices/')).toBe(false);
+});
+
+it.each([false, true])(
+  'denies notices access without a normal session (closed: %s)',
+  async (closed) => {
+    current = {
+      user: null,
+      restrictions: null,
+      account_closed: closed,
+      closure_message: 'Your account has been closed.',
+    };
+    page('/account-notices');
+    await screen.findByText('Make yourself at home');
+    if (closed)
+      expect(screen.getByRole('alert')).toHaveTextContent('Your account has been closed.');
+    expect(screen.queryByLabelText('Password', { selector: 'input' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Username', { selector: 'input' })).not.toBeInTheDocument();
+    expect(seen.some(([path]) => path === '/api/moderation/notices/')).toBe(false);
+  },
+);
+
+it.each(['', '2020-01-01T12:30'])(
+  'rejects a missing or past fixed expiry before sending a mutation: %s',
+  async (value) => {
+    page('/moderation/players/player-id');
+    await userEvent.click(await screen.findByRole('button', { name: 'Issue sanction' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await userEvent.click(dialog.getByRole('radio', { name: 'suspension' }));
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Duration' }), 'fixed');
+    fireEvent.change(dialog.getByLabelText(/Expires at/), { target: { value } });
+    // Exercise the handler even if browser-native validation is bypassed.
+    fireEvent.submit(dialog.getByRole('button', { name: 'Issue sanction' }).closest('form')!);
+    expect(await dialog.findByRole('alert')).toHaveTextContent(
+      'Choose an expiration date in the future.',
+    );
+    expect(
+      seen.some(
+        ([path, options]) => path.endsWith('/player-id/sanctions/') && options?.method === 'POST',
+      ),
+    ).toBe(false);
+  },
+);
