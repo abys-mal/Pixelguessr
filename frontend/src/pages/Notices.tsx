@@ -8,12 +8,12 @@ export function Notices() {
   if (loading) return <StatusMessage>Loading account…</StatusMessage>;
   if (!user) return <SignInPrompt feature="view your account notices" />;
   return (
-    <>
+    <div className="notices-page">
       <PageHeading eyebrow="YOUR ACCOUNT" title="Account notices">
         Review sanctions, acknowledge warnings, and follow your appeals.
       </PageHeading>
       <Link to="/settings/account">← Account settings</Link>
       <AccountNotices />
-    </>
+    </div>
   );
 }

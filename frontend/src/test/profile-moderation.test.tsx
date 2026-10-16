@@ -122,7 +122,7 @@ it('places sign out next to the username on the own profile and retains settings
 
 it('removes the redundant settings logout control', async () => {
   page('/settings/account');
-  await screen.findByRole('link', { name: 'Account notices & appeals →' });
+  await screen.findByRole('link', { name: 'View account notices →' });
   expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
 });
 

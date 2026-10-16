@@ -87,7 +87,7 @@ it('renders profile settings, notices navigation and three protected actions wit
   await screen.findByRole('button', { name: 'Change Email' });
   for (const name of ['Username', 'Email', 'Password', 'Profile details'])
     expect(screen.getByRole('heading', { name })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Account notices & appeals →' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'View account notices →' })).toHaveAttribute(
     'href',
     '/account-notices',
   );

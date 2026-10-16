@@ -118,7 +118,7 @@ it.each(['probation', 'suspension'] as const)(
     await screen.findByRole('heading', { name: 'Account notices', level: 1 });
     act(() => receive(notice(kind)));
     expect(screen.getByRole('heading', { name: 'Account notices', level: 1 })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Active sanctions' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^Active sanctions/ })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Username' })).not.toBeInTheDocument();
   },
 );

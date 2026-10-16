@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { AccountSecurity } from './AccountSecurity';
+import { AccountNoticeStatus } from '../components/AccountNoticeStatus';
 import { RankedProfile } from './RankedPublic';
 import { api } from '../api';
 import { useAuth } from '../auth/context';
@@ -65,10 +66,8 @@ export function Settings() {
             {pending ? 'Please wait…' : 'Save display name'}
           </button>
         </form>
+        <AccountNoticeStatus compact />
       </div>
-      <p className="account-notices-link">
-        <Link to="/account-notices">Account notices &amp; appeals →</Link>
-      </p>
       {error && <StatusMessage error>{error}</StatusMessage>}
       {message && <StatusMessage>{message}</StatusMessage>}
     </>

@@ -429,9 +429,10 @@ it.each(['probation', 'suspension'])(
     page('/account-notices');
     await screen.findByRole('heading', { name: 'Account notices', level: 1 });
     const region = await screen.findByRole('region', { name: 'Sanctions and appeals' });
-    expect(await within(region).findByText(/last upheld decision/)).toHaveTextContent(
-      new Date('2027-03-15T12:00:00Z').toLocaleString(),
-    );
+    expect(await within(region).findByText(/last upheld decision/)).toBeInTheDocument();
+    expect(
+      within(region).getByText(new Date('2027-03-15T12:00:00Z').toLocaleString()),
+    ).toBeInTheDocument();
     expect(within(region).getByText(/Indefinite/)).toBeInTheDocument();
     expect(
       within(region).queryByRole('button', { name: 'Appeal this sanction' }),
@@ -454,7 +455,7 @@ it('shows pending appeals without inventing a cooldown date', async () => {
 
 it('links settings to notices without duplicating the full interface', async () => {
   page('/settings/account');
-  expect(await screen.findByRole('link', { name: 'Account notices & appeals →' })).toHaveAttribute(
+  expect(await screen.findByRole('link', { name: 'View account notices →' })).toHaveAttribute(
     'href',
     '/account-notices',
   );
