@@ -1,6 +1,7 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth.models import Permission
@@ -15,6 +16,7 @@ from moderation.models import Activity, Appeal, Report, Sanction
 from moderation.services import account_restrictions
 from moderation.workspace import (
     change_access,
+    change_names,
     eligibility,
     issue,
     reverse,
@@ -46,6 +48,262 @@ def administrator(db):
 
 def authenticate(client, user):
     client.force_authenticate(user)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"username": "Renamed.Player"},
+        {"display_name": "New public name"},
+        {"username": "Renamed.Player", "display_name": "New public name"},
+        {"display_name": ""},
+    ],
+)
+def test_player_names_changes_only_requested_fields(client, moderator, user, values):
+    user.display_name = "Original name"
+    user.save(update_fields=["display_name"])
+    before = dict(User.objects.filter(pk=user.pk).values().get())
+    authenticate(client, moderator)
+    response = client.post(ROOT + f"players/{user.pk}/names/", values, format="json")
+    assert response.status_code == 200
+    after = User.objects.filter(pk=user.pk).values().get()
+    assert after == {**before, **values}
+    audit = Activity.objects.get(action="player_names_changed")
+    assert audit.user_id == user.pk and audit.actor_id == moderator.pk and audit.created_at
+    assert audit.changes == {
+        field: {"old": before[field], "new": value} for field, value in values.items()
+    }
+
+
+@pytest.mark.parametrize("values", [{}, {"username": "pixelplayer", "display_name": ""}])
+def test_player_names_noop_has_no_audit_or_notification(moderator, user, values, monkeypatch):
+    notification = Mock()
+    monkeypatch.setattr("moderation.enforcement.schedule", notification)
+    change_names(moderator, user.pk, values)
+    assert not Activity.objects.exists()
+    notification.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "value", ["", "x" * 151, "bad name", "bad\tname", "bad_", "bad-", "bad/name", "bad!name"]
+)
+def test_player_names_reuses_registration_validation(client, moderator, user, value):
+    from accounts.serializers import RegisterSerializer
+
+    registration = RegisterSerializer(data={"username": value})
+    assert not registration.is_valid() and "username" in registration.errors
+    authenticate(client, moderator)
+    response = client.post(
+        ROOT + f"players/{user.pk}/names/",
+        {"username": value, "display_name": "Must roll back"},
+        format="json",
+    )
+    assert response.status_code == 400 and "username" in response.json()
+    user.refresh_from_db()
+    assert user.username == "pixelplayer" and user.display_name == ""
+    assert not Activity.objects.exists()
+
+
+@pytest.mark.parametrize("value", ["admin", "a", "Ｆｕｌｌｗｉｄｔｈ"])
+def test_player_names_normalizes_and_matches_current_registration_rules(moderator, user, value):
+    from accounts.serializers import available_username
+
+    expected = available_username(value)
+    updated = change_names(moderator, user.pk, {"username": value})
+    assert updated.username == expected
+    assert Activity.objects.get().changes == {"username": {"old": "pixelplayer", "new": expected}}
+
+
+def test_player_names_rejects_case_insensitive_collision(client, moderator, user):
+    authenticate(client, moderator)
+    response = client.post(
+        ROOT + f"players/{user.pk}/names/", {"username": moderator.username.upper()}, format="json"
+    )
+    assert response.status_code == 400 and "unavailable" in response.json()["username"][0]
+    assert not Activity.objects.exists()
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"display_name": "x" * 41},
+        {"email": "no@example.test"},
+        {"rating": 9999},
+        {"id": str(uuid.uuid4())},
+    ],
+)
+def test_player_names_rejects_invalid_display_and_other_fields(client, moderator, user, values):
+    authenticate(client, moderator)
+    assert client.post(ROOT + f"players/{user.pk}/names/", values, format="json").status_code == 400
+    assert not Activity.objects.exists()
+
+
+@pytest.mark.parametrize("role", ["guest", "player", "inactive", "closed"])
+def test_player_names_denies_unauthorized_actor(client, moderator, administrator, user, role):
+    if role == "player":
+        authenticate(client, user)
+    elif role != "guest":
+        if role == "inactive":
+            moderator.is_active = False
+            moderator.save(update_fields=["is_active"])
+        else:
+            issue(administrator, moderator.pk, {"kind": "closed", "category": "integrity"})
+        authenticate(client, moderator)
+    assert (
+        client.post(
+            ROOT + f"players/{user.pk}/names/", {"username": "Renamed"}, format="json"
+        ).status_code
+        == 403
+    )
+    assert not Activity.objects.filter(action="player_names_changed").exists()
+
+
+@pytest.mark.parametrize("role", ["staff", "moderator", "administrator"])
+def test_player_names_protected_accounts_require_administrator(
+    client, moderator, administrator, staff, role
+):
+    target = {"staff": staff, "moderator": moderator, "administrator": administrator}[role]
+    authenticate(client, moderator)
+    url = ROOT + f"players/{target.pk}/names/"
+    assert client.post(url, {"username": "ProtectedRenamed"}, format="json").status_code == 403
+    authenticate(client, administrator)
+    assert client.post(url, {"username": "ProtectedRenamed"}, format="json").status_code == 200
+    assert Activity.objects.get(action="player_names_changed").user_id == target.pk
+
+
+def test_player_names_preserves_session_history_restrictions_and_private_audit(
+    client, moderator, user
+):
+    from accounts.consumer import read_status
+    from games.models import Match, Participant
+
+    warning = sanction(moderator, user)
+    appeal = submit_appeal(user, warning.pk, "Please review")
+    report = Report.objects.create(
+        subject=user, reporter=moderator, category="fair_play", details="Test report"
+    )
+    match = Match.objects.create(mode="ranked", status="complete", completed_at=timezone.now())
+    participant = Participant.objects.create(
+        match=match, user=user, rating_before=1300, rating_after=1320, rating_delta=20
+    )
+    user.rating = 1320
+    user.ranked_matches = 1
+    user.save(update_fields=["rating", "ranked_matches"])
+    restrictions = account_restrictions(user)
+    logged_in = APIClient()
+    logged_in.force_login(user)
+    session_key = logged_in.session.session_key
+    authenticate(client, moderator)
+    assert (
+        client.post(
+            ROOT + f"players/{user.pk}/names/",
+            {"username": "Renamed", "display_name": "Fresh name"},
+            format="json",
+        ).status_code
+        == 200
+    )
+    assert logged_in.session.session_key == session_key
+    body = logged_in.get("/api/auth/me/").json()
+    assert body["user"]["id"] == str(user.pk) and body["user"]["username"] == "Renamed"
+    assert body["user"]["display_name"] == "Fresh name"
+    assert read_status(session_key)[1]["user"]["username"] == "Renamed"
+    user.refresh_from_db()
+    assert user.rating == 1320 and account_restrictions(user) == restrictions
+    for record in [warning, appeal, participant]:
+        record.refresh_from_db()
+        assert record.user_id == user.pk
+    report.refresh_from_db()
+    assert report.subject_id == user.pk
+    public = logged_in.get("/api/auth/profiles/Renamed/").json()
+    assert public["display_name"] == "Fresh name" and "activity" not in public
+    assert logged_in.get(ROOT + f"players/{user.pk}/").status_code == 403
+    audit = Activity.objects.get(action="player_names_changed")
+    change_names(moderator, user.pk, {"username": "RenamedAgain"})
+    audit.refresh_from_db()
+    assert audit.user_id == user.pk and audit.changes["username"]["new"] == "Renamed"
+
+
+def test_player_names_rolls_back_when_audit_fails(moderator, user, monkeypatch):
+    monkeypatch.setattr(
+        "moderation.workspace.Activity.objects.create",
+        Mock(side_effect=RuntimeError("Audit unavailable")),
+    )
+    with pytest.raises(RuntimeError):
+        change_names(moderator, user.pk, {"username": "Renamed"})
+    user.refresh_from_db()
+    assert user.username == "pixelplayer"
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_concurrent_player_names_cannot_claim_same_username(moderator, user):
+    if connection.vendor == "sqlite" and connection.is_in_memory_db():
+        pytest.skip("File-backed SQLite required for concurrent writer checks")
+    from threading import Barrier
+
+    other = User.objects.create_user(username="otherplayer", email="other@example.test")
+    barrier = Barrier(2)
+
+    def rename(target_id):
+        close_old_connections()
+        try:
+            actor = User.objects.get(pk=moderator.pk)
+            barrier.wait(timeout=10)
+            try:
+                change_names(actor, target_id, {"username": "ClaimedName"})
+                return True
+            except ValidationError:
+                return False
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(rename, [user.pk, other.pk]))
+    assert sorted(results) == [False, True]
+    assert User.objects.filter(username__iexact="ClaimedName").count() == 1
+    assert Activity.objects.filter(action="player_names_changed").count() == 1
+
+
+@pytest.mark.parametrize("collision", [False, True])
+def test_player_names_refreshes_live_party_alias_only(
+    moderator, user, collision, django_capture_on_commit_callbacks
+):
+    from games.models import Party, PartyMember
+
+    now = timezone.now()
+    live = Party.objects.create(
+        code="NAMES1", create_request_id=uuid.uuid4(), expires_at=now + timedelta(days=1)
+    )
+    historical = Party.objects.create(
+        code="NAMES2",
+        create_request_id=uuid.uuid4(),
+        expires_at=now + timedelta(days=1),
+        status="closed",
+    )
+    member = PartyMember.objects.create(
+        party=live, user=user, display_name=user.username, name_key=user.username, last_seen=now
+    )
+    past = PartyMember.objects.create(
+        party=historical,
+        user=user,
+        display_name=user.username,
+        name_key=user.username,
+        last_seen=now,
+    )
+    if collision:
+        PartyMember.objects.create(
+            party=live,
+            user=moderator,
+            display_name="Fresh name",
+            name_key="fresh name",
+            last_seen=now,
+        )
+    with django_capture_on_commit_callbacks(execute=False) as callbacks:
+        change_names(moderator, user.pk, {"display_name": "Fresh name"})
+    member.refresh_from_db()
+    past.refresh_from_db()
+    assert member.display_name == ("Fresh name (2)" if collision else "Fresh name")
+    assert member.user_id == past.user_id == user.pk and past.display_name == "pixelplayer"
+    assert len(callbacks) == 2  # Party invalidation and account-session invalidation.
 
 
 def sanction(moderator, user, kind="warning", **kwargs):

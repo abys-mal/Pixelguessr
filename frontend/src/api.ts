@@ -54,6 +54,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public code?: string,
+    public fields?: Record<string, string[]>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -97,7 +98,16 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (!response.ok) {
     const code =
       typeof body === 'object' && body !== null && 'code' in body ? String(body.code) : undefined;
-    throw new ApiError(errorMessage(body, response.status), response.status, code);
+    const fields =
+      typeof body === 'object' && body !== null
+        ? Object.fromEntries(
+            Object.entries(body).filter(
+              (entry): entry is [string, string[]] =>
+                Array.isArray(entry[1]) && entry[1].every((item) => typeof item === 'string'),
+            ),
+          )
+        : undefined;
+    throw new ApiError(errorMessage(body, response.status), response.status, code, fields);
   }
   return body as T;
 }

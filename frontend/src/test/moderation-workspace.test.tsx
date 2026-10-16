@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App';
-import { api, type Session, type User } from '../api';
+import { api, ApiError, type Session, type User } from '../api';
 import { AuthProvider } from '../auth/AuthProvider';
 
 const moderationCss = readFileSync('src/moderation/moderation.css', 'utf8');
@@ -165,6 +165,147 @@ function page(route: string) {
     </MemoryRouter>,
   );
 }
+
+it('keeps only the moderation brand free of hover underlines and retains focus styling', async () => {
+  const sharedCss = readFileSync('src/styles.css', 'utf8');
+  const style = document.createElement('style');
+  // Map hover to an attribute to exercise the real cascade in jsdom.
+  style.textContent = (sharedCss + moderationCss).replaceAll(':hover', '[data-hover]');
+  document.head.append(style);
+  try {
+    page('/moderation');
+    await screen.findByRole('heading', { name: 'A clearer community.' });
+    const brand = document.querySelector<HTMLAnchorElement>('.mod-brand')!;
+    brand.setAttribute('data-hover', '');
+    expect(brand).toHaveAttribute('href', '/moderation');
+    expect(getComputedStyle(brand).textDecoration).toBe('none');
+    brand.focus();
+    expect(brand).toHaveFocus();
+    expect(moderationCss).toMatch(/\.mod-shell a:focus-visible/);
+    const returnLink = screen.getByRole('link', { name: '← Return to Game' });
+    returnLink.setAttribute('data-hover', '');
+    expect(getComputedStyle(returnLink).textDecoration).toBe('underline');
+  } finally {
+    style.remove();
+  }
+});
+
+it.each([
+  [{ username: 'renamed' }, 'renamed', 'Player'],
+  [{ display_name: '' }, 'pixelplayer', ''],
+  [{ username: 'renamed', display_name: 'Fresh name' }, 'renamed', 'Fresh name'],
+])(
+  'edits only changed names and refreshes stable player details: %j',
+  async (changes, username, displayName) => {
+    const fallback = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (path, options) => {
+      if (path.endsWith('/names/')) {
+        seen.push([path, options]);
+        detail = {
+          ...detail,
+          player: { ...player, ...changes },
+          activity: [
+            {
+              id: 'names-audit',
+              actor: 'mod',
+              action: 'player_names_changed',
+              created_at: '2026-10-15T12:00:00Z',
+              changes: Object.fromEntries(
+                Object.entries(changes).map(([key, value]) => [
+                  key,
+                  { old: player[key as keyof typeof player], new: value },
+                ]),
+              ),
+            },
+          ],
+        };
+        return detail.player;
+      }
+      return fallback(path, options);
+    });
+    page('/moderation/players/player-id');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit player names' }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveValue('pixelplayer');
+    expect(dialog.getByRole('textbox', { name: 'Display name' })).toHaveValue('Player');
+    expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    fireEvent.submit(dialog.getByRole('button', { name: 'Save changes' }).closest('form')!);
+    expect(seen.filter(([path]) => path.endsWith('/names/'))).toHaveLength(0);
+    for (const [key, value] of Object.entries(changes)) {
+      fireEvent.change(
+        dialog.getByRole('textbox', { name: key === 'username' ? 'Username' : 'Display name' }),
+        { target: { value } },
+      );
+    }
+    await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('Player names saved.');
+    expect(await screen.findByRole('heading', { name: `@${username}` })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Public profile ↗' })).toHaveAttribute(
+      'href',
+      `/players/${username}`,
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit player names' })).toHaveFocus();
+    const writes = seen.filter(([path]) => path.endsWith('/names/'));
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0][1]?.body))).toEqual(changes);
+    expect((detail.player as typeof player).display_name).toBe(displayName);
+    expect(screen.getByText('player names changed')).toBeInTheDocument();
+  },
+);
+
+it('keeps validation errors next to their fields and prevents duplicate submissions', async () => {
+  const fallback = vi.mocked(api).getMockImplementation()!;
+  let reject!: (error: Error) => void;
+  const request = new Promise<never>((_, fail) => {
+    reject = fail;
+  });
+  vi.mocked(api).mockImplementation((path, options) => {
+    if (path.endsWith('/names/')) {
+      seen.push([path, options]);
+      return request;
+    }
+    return fallback(path, options);
+  });
+  page('/moderation/players/player-id');
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit player names' }));
+  const dialog = within(screen.getByRole('dialog'));
+  fireEvent.change(dialog.getByRole('textbox', { name: 'Username' }), {
+    target: { value: 'taken' },
+  });
+  const form = dialog.getByRole('button', { name: 'Save changes' }).closest('form')!;
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  expect(dialog.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+  expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  expect(seen.filter(([path]) => path.endsWith('/names/'))).toHaveLength(1);
+  reject(
+    new ApiError('Username unavailable.', 400, undefined, {
+      username: ['This username is unavailable.'],
+    }),
+  );
+  expect(await dialog.findByRole('alert')).toHaveTextContent('This username is unavailable.');
+  expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveAttribute('aria-invalid', 'true');
+  expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveAccessibleDescription(
+    'This username is unavailable.',
+  );
+  expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveValue('taken');
+  expect(dialog.getByRole('textbox', { name: 'Username' })).toHaveFocus();
+  expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it.each([false, true])(
+  'exposes protected-account name editing only to administrators: %s',
+  async (admin) => {
+    current = { ...current, user: { ...moderator, administrator: admin } };
+    detail = { ...detail, player: { ...player, protected: true, moderator: true } };
+    page('/moderation/players/player-id');
+    await screen.findByRole('heading', { name: '@pixelplayer' });
+    expect(!!screen.queryByRole('button', { name: 'Edit player names' })).toBe(admin);
+  },
+);
 
 it('separates the workspace from game navigation and has a return path', async () => {
   page('/moderation');

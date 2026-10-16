@@ -14,6 +14,7 @@ import {
 } from './api';
 import { Dialog, Feedback, Heading, Loading } from './components';
 import { useData } from './useData';
+import { PlayerNames } from './PlayerNames';
 
 function SanctionForm({
   player,
@@ -197,7 +198,7 @@ function SanctionForm({
 }
 
 export function PlayerDetail({ id }: { id: string }) {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const { data, error, reload } = useData<Detail>(`${root}players/${id}/`);
   const [form, setForm] = useState<Sanction | 'new' | null>(null);
   const [reversing, setReversing] = useState<Sanction | null>(null);
@@ -205,6 +206,7 @@ export function PlayerDetail({ id }: { id: string }) {
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState('');
   const [message, setMessage] = useState('');
+  const [editingNames, setEditingNames] = useState(false);
   if (!data) return <Loading error={error} retry={reload} />;
   const canAct = !!user?.administrator || !data.player.protected;
   const run = async (url: string, body = {}) => {
@@ -244,6 +246,11 @@ export function PlayerDetail({ id }: { id: string }) {
           <Link to={`/players/${data.player.username}`}>Public profile ↗</Link>
         </div>
         <div className="mod-actions">
+          {canAct && (
+            <button className="mod-button subtle" onClick={() => setEditingNames(true)}>
+              Edit player names
+            </button>
+          )}
           {canAct && (
             <button className="mod-button" onClick={() => setForm('new')}>
               Issue sanction
@@ -374,6 +381,23 @@ export function PlayerDetail({ id }: { id: string }) {
               {typeof a.changes.internal_note === 'string' && a.changes.internal_note && (
                 <p className="mod-internal">Internal: {String(a.changes.internal_note)}</p>
               )}
+              {a.action === 'player_names_changed' &&
+                ['username', 'display_name'].map((field) => {
+                  const change = a.changes[field];
+                  if (
+                    !change ||
+                    typeof change !== 'object' ||
+                    !('old' in change) ||
+                    !('new' in change)
+                  )
+                    return null;
+                  return (
+                    <p key={field}>
+                      {field === 'username' ? 'Username' : 'Display name'}:{' '}
+                      {String(change.old) || '(blank)'} → {String(change.new) || '(blank)'}
+                    </p>
+                  );
+                })}
             </li>
           ))}
         </ol>
@@ -383,6 +407,17 @@ export function PlayerDetail({ id }: { id: string }) {
           </p>
         )}
       </section>
+      {editingNames && (
+        <PlayerNames
+          player={data.player}
+          close={() => setEditingNames(false)}
+          saved={() => {
+            setMessage('Player names saved.');
+            reload();
+            if (user?.id === id) void refresh();
+          }}
+        />
+      )}
       {form && (
         <SanctionForm
           player={id}

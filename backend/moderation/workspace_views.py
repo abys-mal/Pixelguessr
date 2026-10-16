@@ -13,6 +13,7 @@ from .models import Appeal, Report, Sanction
 from .permissions import WorkspaceAccess
 from .workspace import (
     change_access,
+    change_names,
     issue,
     ordinary_players,
     resolve_report,
@@ -112,6 +113,11 @@ class IssueSanction(WorkspaceView):
         return Response(
             StaffSanction(issue(request.user, pk, serializer.validated_data)).data, status=201
         )
+
+
+class PlayerNames(WorkspaceView):
+    def post(self, request, pk):
+        return Response(player_summary(change_names(request.user, pk, request.data)))
 
 
 class ReverseSanction(WorkspaceView):

@@ -216,6 +216,42 @@ def add_member(party, request, now):
     return member
 
 
+def refresh_account_name(user):
+    """Refresh live aliases under the party lock; preserve departed/historical names."""
+    now = timezone.now()
+    codes = Party.objects.filter(
+        members__user=user,
+        members__left_at__isnull=True,
+        expires_at__gt=now,
+    ).exclude(status__in=[Party.Status.CLOSED, Party.Status.ABORTED])
+    for code in codes.order_by("code").values_list("code", flat=True):
+        try:
+            party = lock_party(code)
+        except GameError as exc:
+            if exc.detail.get("code") == "party_closed":
+                continue
+            raise
+        member = party.members.filter(user=user, left_at__isnull=True).first()
+        if not member:
+            continue
+        original = (user.display_name or user.username)[:40]
+        name = original
+        index = 2
+        while (
+            party.members.filter(left_at__isnull=True, name_key=name.casefold())
+            .exclude(pk=member.pk)
+            .exists()
+        ):
+            # Party aliases already disambiguate names; the account username is exact.
+            name = f"{original[:32]} ({index})"
+            index += 1
+        if member.display_name != name:
+            member.display_name = name
+            member.name_key = name.casefold()
+            member.save(update_fields=["display_name", "name_key"])
+            changed(party)
+
+
 def create_party(request, data):
     check_access(request)
     now = timezone.now()

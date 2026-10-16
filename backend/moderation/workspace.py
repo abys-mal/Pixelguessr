@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError as ModelValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -231,3 +231,48 @@ def ordinary_players():
         )
         .distinct()
     )
+
+
+@transaction.atomic
+def change_names(actor, user_id, data):
+    from accounts.serializers import available_username
+    from games.parties import refresh_account_name
+
+    from .enforcement import schedule
+
+    target = lock_player(user_id)
+    authorize(actor, target)
+    # Validate after locking, against the current account rather than a stale request.
+    from .workspace_serializers import PlayerNamesInput
+
+    serializer = PlayerNamesInput(data=data)
+    serializer.is_valid(raise_exception=True)
+    values = dict(serializer.validated_data)
+    if "username" in values:
+        try:
+            values["username"] = available_username(values["username"], excluding=target.pk)
+        except ValidationError as exc:
+            raise ValidationError({"username": exc.detail}) from exc
+    changes = {
+        field: {"old": getattr(target, field), "new": value}
+        for field, value in values.items()
+        if value != getattr(target, field)
+    }
+    if not changes:
+        return target
+    for field, change in changes.items():
+        setattr(target, field, change["new"])
+    try:
+        with transaction.atomic():
+            # A staff correction leaves the player's self-service cooldown unchanged.
+            target.save(update_fields=list(changes))
+    except IntegrityError as exc:
+        if "username" in changes:
+            raise ValidationError({"username": ["This username is unavailable."]}) from exc
+        raise
+    Activity.objects.create(
+        user=target, actor=actor, action="player_names_changed", changes=changes
+    )
+    refresh_account_name(target)
+    schedule(target.pk)
+    return target

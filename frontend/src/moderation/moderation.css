@@ -35,6 +35,11 @@
   font-size: 38px;
   line-height: 1;
 }
+.mod-sidebar .mod-brand,
+.mod-sidebar .mod-brand:hover,
+.mod-sidebar .mod-brand:focus-visible {
+  text-decoration: none;
+}
 .mod-brand small {
   display: block;
   color: var(--mod-muted);
@@ -564,6 +569,11 @@
 .mod-form {
   display: grid;
   gap: 18px;
+}
+.mod-field-error {
+  color: #ffb0b3;
+  margin: 0;
+  font-size: 13px;
 }
 .mod-form label {
   display: grid;

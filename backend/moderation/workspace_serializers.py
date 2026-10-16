@@ -1,8 +1,24 @@
+from collections.abc import Mapping
+
 from rest_framework import serializers
+
+from accounts.serializers import SettingsSerializer
 
 from .models import Activity, Appeal, Category, Report, Sanction
 from .permissions import is_moderator, is_protected
 from .workspace import eligibility
+
+
+class PlayerNamesInput(SettingsSerializer):
+    username = serializers.CharField(max_length=150, trim_whitespace=False, required=False)
+
+    class Meta(SettingsSerializer.Meta):
+        fields = ["username", "display_name"]
+
+    def to_internal_value(self, data):
+        if isinstance(data, Mapping) and set(data) - set(self.fields):
+            raise serializers.ValidationError({"detail": "Only player names can be edited here."})
+        return super().to_internal_value(data)
 
 
 class SanctionInput(serializers.Serializer):

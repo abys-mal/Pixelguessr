@@ -69,8 +69,12 @@ export function Dialog({
   const id = useId();
   useEffect(() => {
     const dialog = ref.current;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      dialog?.close();
+      if (opener?.isConnected) opener.focus();
+    };
   }, []);
   return (
     <dialog

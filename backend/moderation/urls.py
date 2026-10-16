@@ -9,6 +9,7 @@ urlpatterns = [
     path("workspace/", workspace.Overview.as_view()),
     path("workspace/players/", workspace.Players.as_view()),
     path("workspace/players/<uuid:pk>/", workspace.Player.as_view()),
+    path("workspace/players/<uuid:pk>/names/", workspace.PlayerNames.as_view()),
     path("workspace/players/<uuid:pk>/sanctions/", workspace.IssueSanction.as_view()),
     path("workspace/players/<uuid:pk>/access/", workspace.ModeratorAccess.as_view()),
     path("workspace/sanctions/<uuid:pk>/reverse/", workspace.ReverseSanction.as_view()),

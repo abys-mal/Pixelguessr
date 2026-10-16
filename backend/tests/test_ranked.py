@@ -81,6 +81,28 @@ def pair(user, opponent):
     return Match.objects.get(pk=result["match_id"])
 
 
+def test_staff_name_correction_updates_ranked_identity_and_public_standings(
+    game, user, opponent, staff, client
+):
+    from moderation.workspace import change_names
+
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
+    before = ranked.state(opponent, game.pk)
+    original = next(p for p in before["players"] if p["username"] == user.username)
+    change_names(
+        staff, user.pk, {"username": "RenamedDuelPlayer", "display_name": "Fresh duel name"}
+    )
+    after = ranked.state(opponent, game.pk)
+    renamed = next(p for p in after["players"] if p["id"] == original["id"])
+    assert renamed == {**original, "username": "RenamedDuelPlayer"}
+    user.ranked_matches = 1
+    user.save(update_fields=["ranked_matches"])
+    rows = client.get("/api/ranked/leaderboard/").json()["results"]
+    assert len(rows) == 1
+    assert rows[0]["username"] == "RenamedDuelPlayer" and rows[0]["rating"] == user.rating
+
+
 @pytest.fixture
 def game(images, user, opponent, clock):
     match = pair(user, opponent)
