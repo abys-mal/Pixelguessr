@@ -58,22 +58,27 @@ export function AdministrationOverview() {
   if (!data) return <Loading error={error} retry={reload} />;
   const warning = data.health.some((x) => ['Unavailable', 'Degraded'].includes(x.state));
   return (
-    <>
+    <div className="admin-overview">
       <Heading title="Administration" detail="The game, its people, and the pictures behind it." />
-      <div className="admin-metrics">
-        {[
-          ['Registered players', data.players],
-          ['Active games', data.active_games],
-          ['Playable images', data.playable_images],
-          ['Pending reviews', data.pending_images],
-          ['Incomplete imports', data.incomplete_imports],
-        ].map(([name, count]) => (
-          <section className="mod-card" key={name}>
-            <span className="mod-muted">{name}</span>
-            <strong>{count}</strong>
-          </section>
-        ))}
-      </div>
+      <section className="admin-summary" aria-label="Summary metrics">
+        <div className="admin-metrics">
+          {[
+            ['Registered players', data.players],
+            ['Active games', data.active_games],
+            ['Approved images', data.playable_images],
+            ['Pending reviews', data.pending_images],
+            ['Incomplete imports', data.incomplete_imports],
+          ].map(([name, count]) => (
+            <section className="mod-card" key={name}>
+              <span className="mod-muted">{name}</span>
+              <strong>{count}</strong>
+            </section>
+          ))}
+        </div>
+        <p className="mod-muted">
+          Image count excludes retired images and entries without a hosted file.
+        </p>
+      </section>
       <section className="mod-card">
         <h2>Needs Attention</h2>
         <div className="admin-attention">
@@ -107,6 +112,6 @@ export function AdministrationOverview() {
           </button>
         </section>
       </div>
-    </>
+    </div>
   );
 }

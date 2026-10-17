@@ -346,6 +346,10 @@ def test_staff_protection_on_search_details_actions(
     client, user, staff, moderator, administrator, target
 ):
     protected = {"staff": staff, "moderator": moderator, "administrator": administrator}[target]
+    if target == "administrator":
+        protected = User.objects.create_superuser(
+            username="other_admin", email="other@example.test"
+        )
     authenticate(client, moderator)
     rows = client.get(ROOT + "players/").json()["results"]
     assert str(protected.pk) not in {row["id"] for row in rows}
@@ -839,3 +843,154 @@ def test_api_supports_indefinite_and_fixed_duration_replacements(client, moderat
     active = next(row for row in notices if row["active"])
     assert active["expires_at"] is None and active["appeal"]["eligible"]
     assert Activity.objects.filter(user=user, action="sanction_replaced").count() == 2
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
+@pytest.mark.parametrize("role", ["moderator", "administrator"])
+def test_staff_cannot_sanction_themselves_through_api(client, moderator, administrator, role, kind):
+    actor = {"moderator": moderator, "administrator": administrator}[role]
+    authenticate(client, actor)
+    response = client.post(ROOT + f"players/{actor.pk}/sanctions/", {"kind": kind}, format="json")
+    assert response.status_code == 403
+    assert "own account" in response.json()["detail"]
+    assert not Sanction.objects.exists() and not Activity.objects.exists()
+    actor.refresh_from_db()
+    assert actor.is_active
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
+@pytest.mark.parametrize("role", ["moderator", "administrator"])
+def test_shared_model_and_admin_creation_reject_self_sanctions(
+    moderator, administrator, role, kind
+):
+    from django.contrib import admin
+    from django.test import RequestFactory
+
+    actor = {"moderator": moderator, "administrator": administrator}[role]
+    data = {"user": actor, "issued_by": actor, "kind": kind, "category": "fair_play"}
+    with pytest.raises(ModelValidationError, match="own account"):
+        Sanction.objects.create(**data)
+    request = RequestFactory().post("/admin/moderation/sanction/add/")
+    request.user = actor
+    with pytest.raises(ModelValidationError, match="own account"):
+        admin.site._registry[Sanction].save_model(request, Sanction(**data), None, False)
+    assert not Sanction.objects.exists() and not Activity.objects.exists()
+
+
+@pytest.mark.parametrize("role", ["moderator", "administrator"])
+def test_self_replacement_is_denied_without_reversing_original(
+    client, moderator, administrator, role
+):
+    actor = {"moderator": moderator, "administrator": administrator}[role]
+    other = User.objects.create_superuser(username="second_admin", email="second@example.test")
+    original = issue(other, actor.pk, {"kind": "warning", "category": "fair_play"})
+    before = Activity.objects.count()
+    authenticate(client, actor)
+    result = client.post(
+        ROOT + f"sanctions/{original.pk}/replace/", {"kind": "suspension"}, format="json"
+    )
+    assert result.status_code == 403
+    original.refresh_from_db()
+    assert original.revoked_at is None
+    assert Sanction.objects.count() == 1 and Activity.objects.count() == before
+
+
+@pytest.mark.parametrize("target_role", ["moderator", "administrator", "legacy_staff"])
+def test_model_imposition_preserves_staff_protection(moderator, administrator, staff, target_role):
+    other_mod = User.objects.create_user(username="another_mod", email="another@example.test")
+    change_access(administrator, other_mod.pk, True)
+    target = {"moderator": other_mod, "administrator": administrator, "legacy_staff": staff}[
+        target_role
+    ]
+    with pytest.raises(ModelValidationError, match="protected staff"):
+        Sanction.objects.create(
+            user=target, issued_by=moderator, kind="warning", category="fair_play"
+        )
+    assert not Sanction.objects.exists()
+    if target.pk == administrator.pk:
+        issuer = User.objects.create_superuser(username="second_admin", email="second@example.test")
+    else:
+        issuer = administrator
+    assert (
+        issue(issuer, target.pk, {"kind": "warning", "category": "fair_play"}).user_id == target.pk
+    )
+
+
+@pytest.mark.parametrize("target_self", [True, False])
+@pytest.mark.parametrize("api_kind", ["native", "administration"])
+def test_administrator_access_cannot_be_removed_by_any_moderator_control(
+    client, administrator, target_self, api_kind
+):
+    from moderation.administration import manage_player
+
+    target = (
+        administrator
+        if target_self
+        else User.objects.create_superuser(username="second_admin", email="second@example.test")
+    )
+    permission = Permission.objects.get(
+        content_type__app_label="moderation", codename="access_workspace"
+    )
+    target.user_permissions.add(permission)
+    before = (
+        target.is_staff,
+        target.is_superuser,
+        set(target.user_permissions.values_list("pk", flat=True)),
+    )
+    authenticate(client, administrator)
+    url = (
+        ROOT + f"players/{target.pk}/access/"
+        if api_kind == "native"
+        else ROOT + f"administration/players/{target.pk}/"
+    )
+    body = (
+        {"enabled": False} if api_kind == "native" else {"operation": "moderator", "enabled": False}
+    )
+    assert client.post(url, body, format="json").status_code == 400
+    with pytest.raises(ValidationError, match="command-line-only"):
+        change_access(administrator, target.pk, False)
+    with pytest.raises(ValidationError, match="command-line-only"):
+        manage_player(administrator, target.pk, "moderator", {"enabled": False})
+    target.refresh_from_db()
+    assert before == (
+        target.is_staff,
+        target.is_superuser,
+        set(target.user_permissions.values_list("pk", flat=True)),
+    )
+    assert not Activity.objects.exists()
+    summary = client.get(ROOT + f"players/{target.pk}/").json()["player"]
+    assert summary["moderator"] and summary["can_remove_moderator"] is False
+
+
+def test_native_moderator_removal_eligibility_and_admin_self_name_edit(
+    client, administrator, moderator
+):
+    authenticate(client, administrator)
+    summary = client.get(ROOT + f"players/{moderator.pk}/").json()["player"]
+    assert summary["can_remove_moderator"] is True
+    updated = change_names(administrator, administrator.pk, {"display_name": "My display name"})
+    assert updated.display_name == "My display name"
+
+
+def test_admin_sanction_form_excludes_self(administrator, user):
+    from django.contrib import admin
+    from django.test import RequestFactory
+
+    request = RequestFactory().get("/admin/moderation/sanction/add/")
+    request.user = administrator
+    form = admin.site._registry[Sanction].get_form(request)()
+    assert not form.fields["user"].queryset.filter(pk=administrator.pk).exists()
+    assert form.fields["user"].queryset.filter(pk=user.pk).exists()
+
+
+def test_legacy_self_warning_can_be_acknowledged_but_not_reimposed(client, administrator, user):
+    original = issue(administrator, user.pk, {"kind": "warning", "category": "fair_play"})
+    # Represent pre-existing history without creating a new self-sanction via normal paths.
+    Sanction.objects.filter(pk=original.pk).update(issued_by=user)
+    authenticate(client, user)
+    assert client.post(f"/api/moderation/sanctions/{original.pk}/acknowledge/").status_code == 200
+    original.refresh_from_db()
+    assert original.acknowledged_at is not None
+    original.kind = "probation"
+    with pytest.raises(ModelValidationError, match="own account"):
+        original.save()

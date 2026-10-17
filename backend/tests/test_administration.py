@@ -112,7 +112,8 @@ def test_administrator_requires_both_flags_and_respects_closure(client, administ
     authenticate(client, administrator)
     with patch("moderation.administration_views.health", return_value=[]):
         assert client.get(ROOT).status_code == 200
-    issue(administrator, administrator.pk, {"kind": "closed", "category": "integrity"})
+    other = User.objects.create_superuser(username="other_admin", email="other-admin@example.test")
+    issue(other, administrator.pk, {"kind": "closed", "category": "integrity"})
     assert client.get(ROOT + "images/").status_code == 403
 
 
@@ -466,3 +467,27 @@ def test_label_confirmation_is_audited_even_without_text_changes(client, adminis
     event = Activity.objects.get(action="image_edited")
     assert event.changes["before"]["label_verified"] is False
     assert event.changes["after"]["label_verified"] is True
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("inactive", "Inactive"),
+        ("closed", "Closed"),
+        ("suspension", "Suspended"),
+        ("probation", "Probation"),
+    ],
+)
+def test_staff_directory_reports_relevant_account_status(
+    client, administrator, moderator, state, expected
+):
+    if state == "inactive":
+        moderator.is_active = False
+        moderator.save(update_fields=["is_active"])
+    else:
+        issue(administrator, moderator.pk, {"kind": state, "category": "fair_play"})
+    authenticate(client, administrator)
+    rows = client.get(ROOT + "staff/").json()["results"]
+    row = next(row for row in rows if row["id"] == str(moderator.pk))
+    assert row["account_status"] == expected and row["role"] == "Moderator"
+    assert row["can_remove_moderator"] is True

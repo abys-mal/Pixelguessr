@@ -48,6 +48,8 @@ class PixelUserAdmin(UserAdmin):
 
     def save_model(self, request, obj, form, change):
         previous = User.objects.filter(pk=obj.pk).first() if change else None
+        if previous and obj.pk == request.user.pk and not obj.is_active:
+            raise ValidationError("You cannot deactivate your own staff account.")
         if (
             previous
             and (previous.is_staff != obj.is_staff or previous.is_superuser != obj.is_superuser)
@@ -67,6 +69,8 @@ class PixelUserAdmin(UserAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
+        if obj and obj.pk == request.user.pk:
+            fields += ("is_active",)
         if not request.user.is_superuser:
             fields += ("is_staff", "is_superuser", "groups", "user_permissions")
         return fields

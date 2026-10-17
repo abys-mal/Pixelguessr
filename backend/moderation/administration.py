@@ -102,7 +102,7 @@ def manage_player(actor, pk, operation, data):
         enabled = data["enabled"]
         from .permissions import is_protected
 
-        if target.is_staff or target.is_superuser:
+        if actor.pk == target.pk or target.is_staff or target.is_superuser:
             raise ValidationError(
                 {"detail": "Administrator and legacy staff roles are command-line-only."}
             )

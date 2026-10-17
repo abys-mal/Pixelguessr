@@ -145,6 +145,18 @@ class Staff(AdministratorView):
             rows = rows.exclude(is_staff=True, is_superuser=True)
 
         def render(user):
+            restrictions = account_restrictions(user)
+            status = (
+                "Inactive"
+                if not user.is_active
+                else "Closed"
+                if restrictions["blocked"]
+                else "Suspended"
+                if restrictions["suspension"]
+                else "Probation"
+                if restrictions["probation"]
+                else "Active"
+            )
             recent = Activity.objects.filter(actor=user).order_by("-created_at").first()
             assigned = (
                 Activity.objects.filter(
@@ -156,11 +168,7 @@ class Staff(AdministratorView):
             return {
                 **player_summary(user),
                 "role": "Administrator" if user.is_staff and user.is_superuser else "Moderator",
-                "account_status": "Closed"
-                if account_restrictions(user)["blocked"]
-                else "Active"
-                if user.is_active
-                else "Inactive",
+                "account_status": status,
                 "assigned_at": assigned.created_at if assigned else None,
                 "recent_activity": recent.action if recent else None,
             }

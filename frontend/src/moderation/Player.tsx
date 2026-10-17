@@ -210,7 +210,9 @@ export function PlayerDetail({ id }: { id: string }) {
   const [message, setMessage] = useState('');
   const [editingNames, setEditingNames] = useState(false);
   if (!data) return <Loading error={error} retry={reload} />;
+  const isSelf = user?.id === data.player.id;
   const canAct = !!user?.administrator || !data.player.protected;
+  const canSanction = canAct && !isSelf;
   const run = async (url: string, body = {}) => {
     if (pending) return;
     setPending(true);
@@ -255,7 +257,7 @@ export function PlayerDetail({ id }: { id: string }) {
               Edit player names
             </button>
           )}
-          {canAct && (
+          {canSanction && (
             <button className="mod-button" onClick={() => setForm('new')}>
               Issue sanction
             </button>
@@ -265,12 +267,15 @@ export function PlayerDetail({ id }: { id: string }) {
               Grant moderator access
             </button>
           )}
-          {user?.administrator && data.player.moderator && (
+          {user?.administrator && !isSelf && data.player.can_remove_moderator && (
             <button className="mod-button subtle" onClick={() => setAccess(false)}>
               Remove moderator access
             </button>
           )}
         </div>
+        {isSelf && (
+          <p className="mod-muted">You cannot issue or replace sanctions on your own account.</p>
+        )}
         <Feedback error={actionError} message={message} />
       </section>
       <AdministratorPlayerControls detail={data} saved={reload} />
@@ -298,9 +303,11 @@ export function PlayerDetail({ id }: { id: string }) {
             </p>
             {canAct && (user?.administrator || s.kind !== 'closed') && (
               <div className="mod-actions">
-                <button className="mod-button subtle" onClick={() => setForm(s)}>
-                  Replace sanction
-                </button>
+                {canSanction && (
+                  <button className="mod-button subtle" onClick={() => setForm(s)}>
+                    Replace sanction
+                  </button>
+                )}
                 <button
                   className="mod-button subtle"
                   onClick={() => {

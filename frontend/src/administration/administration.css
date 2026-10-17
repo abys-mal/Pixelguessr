@@ -9,14 +9,34 @@
   color: var(--mod-muted);
   margin: 0 14px 4px;
 }
+.admin-overview,
+.admin-staff-page {
+  --admin-section-gap: 24px;
+  display: grid;
+  gap: var(--admin-section-gap);
+  min-width: 0;
+}
+.admin-overview > .mod-heading,
+.admin-staff-page > .mod-heading {
+  margin-bottom: 0;
+}
+.admin-summary {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
 .admin-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: var(--admin-section-gap);
+  grid-auto-rows: 1fr;
 }
 .admin-metrics .mod-card {
   display: grid;
   gap: 10px;
+  grid-template-rows: minmax(2.8em, auto) auto;
+  align-content: start;
+  align-items: start;
 }
 .admin-metrics strong {
   font-size: 32px;
@@ -24,9 +44,24 @@
 }
 .admin-columns {
   display: grid;
-  grid-template-columns: 1.25fr 1fr;
-  gap: 22px;
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--admin-section-gap, 24px);
+  align-items: stretch;
+}
+.admin-columns > .mod-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.admin-columns > .mod-card > h2,
+.admin-columns .admin-health,
+.admin-columns .mod-timeline {
+  margin: 0;
+}
+.admin-columns > .mod-card > :last-child {
+  margin-top: auto;
+  align-self: start;
 }
 .admin-attention {
   display: grid;
@@ -174,13 +209,51 @@
   padding: 12px;
   border-radius: 8px;
 }
-.admin-batch-list,
-.admin-staff-list {
+.admin-batch-list {
   display: grid;
   gap: 16px;
 }
 .admin-staff-list {
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 20px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.admin-staff-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 0;
+}
+.admin-staff-row + .admin-staff-row {
+  border-top: 1px solid var(--mod-line);
+}
+.admin-staff-identity,
+.admin-staff-status {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-staff-status {
+  justify-items: start;
+}
+.admin-staff-actions {
+  margin: 0;
+  justify-content: flex-end;
+}
+.admin-staff-history {
+  font-size: 12px;
+  color: var(--mod-muted);
+}
+.admin-staff-history summary {
+  cursor: pointer;
+}
+.admin-staff-history p {
+  margin-top: 6px;
 }
 .admin-upload {
   border-style: dashed;
@@ -213,6 +286,13 @@
   .admin-columns {
     grid-template-columns: 1fr;
   }
+  .admin-staff-list {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .admin-staff-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
   .mod-sidebar {
     gap: 16px;
   }
@@ -233,9 +313,6 @@
   .admin-health li {
     flex-direction: column;
     gap: 6px;
-  }
-  .admin-staff-list {
-    grid-template-columns: 1fr;
   }
 }
 

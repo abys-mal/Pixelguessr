@@ -101,6 +101,28 @@ beforeEach(() => {
             account_status: 'Active',
             assigned_at: null,
             recent_activity: null,
+            can_remove_moderator: false,
+          },
+          {
+            ...base,
+            id: 'other-admin',
+            username: 'second_admin',
+            role: 'Administrator',
+            account_status: 'Active',
+            assigned_at: null,
+            recent_activity: null,
+            can_remove_moderator: false,
+          },
+          {
+            ...player,
+            id: 'mod-id',
+            username: 'moderator',
+            moderator: true,
+            role: 'Moderator',
+            account_status: 'Active',
+            assigned_at: null,
+            recent_activity: null,
+            can_remove_moderator: true,
           },
         ]);
       if (path.startsWith(root + 'players/?'))
@@ -194,7 +216,7 @@ it.each(['images', 'imports', 'staff', 'audit', 'health'])(
 );
 it('requires explicit confirmation to promote an ordinary player', async () => {
   show('/moderation/administration/staff');
-  await screen.findByText('Historical assignment date unknown', { exact: false });
+  await screen.findByRole('heading', { name: 'Current Staff' });
   await userEvent.type(screen.getByLabelText('Find an ordinary player'), 'imagehunter');
   await userEvent.click(screen.getByRole('button', { name: 'Search players' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Promote to moderator' }));
@@ -253,7 +275,9 @@ it('bulk rejection requires a reason and reports explicit outcomes', async () =>
 it('resumes an incomplete batch and allows label preparation without approval', async () => {
   show('/moderation/administration/imports/batch-id');
   expect(await screen.findByText('rose.jpg')).toBeInTheDocument();
-  expect(screen.getByText(/Incomplete batches never make images playable/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Images remain pending until their labels are reviewed/),
+  ).toBeInTheDocument();
   expect(screen.getByLabelText('Choose images')).toHaveAttribute('multiple');
   await userEvent.click(screen.getByRole('button', { name: 'Prepare labels' }));
   expect(screen.getByRole('dialog', { name: 'Image detail' })).toBeInTheDocument();
@@ -302,4 +326,49 @@ it('does not render an arbitrary or competitive title badge', () => {
   const { container } = render(<PlayerIdentity username="PixelHunter" title="diamond" />);
   expect(container.querySelector('.honorary-title')).toBeNull();
   expect(screen.getByText('PixelHunter')).toBeInTheDocument();
+});
+
+it('places promotion above a compact staff-only list and protects administrators', async () => {
+  show('/moderation/administration/staff');
+  const promotion = await screen.findByRole('region', { name: 'Promote a Player' });
+  const directory = screen.getByRole('region', { name: 'Current Staff' });
+  expect(
+    promotion.compareDocumentPosition(directory) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const list = await within(directory).findByRole('list', { name: 'Current staff' });
+  const rows = within(list).getAllByRole('listitem');
+  expect(rows).toHaveLength(3);
+  expect(within(list).queryByText('imagehunter')).not.toBeInTheDocument();
+  for (const username of ['administrator', 'second_admin']) {
+    const row = rows.find((row) => within(row).queryByText(username));
+    expect(row).toBeDefined();
+    expect(
+      within(row!).queryByRole('button', { name: 'Remove moderator access' }),
+    ).not.toBeInTheDocument();
+  }
+  expect(within(list).getAllByRole('button', { name: 'Remove moderator access' })).toHaveLength(1);
+  expect(screen.getByLabelText('Staff role')).toHaveValue('all');
+});
+
+it('retains moderator demotion confirmation from the staff list', async () => {
+  show('/moderation/administration/staff');
+  await userEvent.click(await screen.findByRole('button', { name: 'Remove moderator access' }));
+  expect(within(screen.getByRole('dialog')).getByText(/mod-id/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm role change' }));
+  await screen.findByText('Moderator access removed.');
+  const write = calls.find(
+    ([path, options]) => path === root + 'players/mod-id/' && options?.method === 'POST',
+  );
+  expect(JSON.parse(String(write?.[1]?.body))).toEqual({ operation: 'moderator', enabled: false });
+});
+
+it('uses consistent approved wording while explaining the overview image count', async () => {
+  show('/moderation/administration');
+  const summary = await screen.findByRole('region', { name: 'Summary metrics' });
+  expect(within(summary).getByText('Approved images')).toBeInTheDocument();
+  expect(within(summary).getByText(/excludes retired images/)).toBeInTheDocument();
+  expect(within(summary).queryByText(/Playable|Ready to Play/)).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Needs Attention' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Recent staff activity' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'System status' })).toBeInTheDocument();
 });

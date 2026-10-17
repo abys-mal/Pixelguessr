@@ -48,6 +48,13 @@ class SanctionAdmin(admin.ModelAdmin):
             return tuple(field.name for field in Sanction._meta.fields)
         return super().get_readonly_fields(request, obj)
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "user":
+            from accounts.models import User
+
+            kwargs["queryset"] = User.objects.exclude(pk=request.user.pk)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
         if not change:
             obj.issued_by = request.user

@@ -12,7 +12,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.models import User
 
 from .models import Activity, Appeal, Report, Sanction
-from .permissions import is_administrator, is_moderator, is_protected
+from .permissions import is_administrator, is_moderator, is_protected, validate_sanction_target
 from .services import account_restrictions, active_sanctions
 
 
@@ -24,10 +24,15 @@ def lock_player(pk):
     return get_object_or_404(User, pk=pk)
 
 
-def authorize(actor, target, *, closure=False):
+def authorize(actor, target, *, closure=False, imposing=False):
     actor = User.objects.get(pk=actor.pk)  # No stale permission cache from the request.
     if not is_moderator(actor) or account_restrictions(actor)["blocked"]:
         raise PermissionDenied("Moderator access is required.")
+    if imposing:
+        try:
+            validate_sanction_target(actor, target)
+        except ModelValidationError as exc:
+            raise PermissionDenied(exc.messages[0]) from exc
     if not is_administrator(actor) and (is_protected(target) or closure):
         raise PermissionDenied("This action requires an administrator.")
 
@@ -91,7 +96,7 @@ def _reverse(actor, sanction):
 @transaction.atomic
 def issue(actor, user_id, data, *, replacing=None):
     target = lock_player(user_id)
-    authorize(actor, target)
+    authorize(actor, target, imposing=True)
     original = None
     if replacing:
         original = get_object_or_404(active_sanctions(target), pk=replacing)
@@ -197,7 +202,7 @@ def change_access(actor, user_id, enabled):
     authorize(actor, target)
     if not is_administrator(actor):
         raise PermissionDenied("Only administrators can manage moderator access.")
-    if target.is_superuser or target.is_staff:
+    if actor.pk == target.pk or target.is_superuser or target.is_staff:
         raise ValidationError(
             {"detail": "Administrator and legacy staff roles are command-line-only."}
         )

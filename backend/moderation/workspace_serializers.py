@@ -44,6 +44,7 @@ class SanctionInput(serializers.Serializer):
 def player_summary(user):
     from accounts.identity import honorary_title
 
+    protected = is_protected(user)
     return {
         "title": honorary_title(user),
         "id": str(user.pk),
@@ -52,7 +53,8 @@ def player_summary(user):
         "date_joined": user.date_joined.isoformat(),
         "rating": user.rating,
         "is_active": user.is_active,
-        "protected": is_protected(user),
+        "protected": protected,
+        "can_remove_moderator": protected and not (user.is_staff or user.is_superuser),
         "moderator": is_moderator(user),
     }
 

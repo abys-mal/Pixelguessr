@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../auth/context';
 import { Link } from 'react-router-dom';
 import type { Page } from '../api';
 import { PlayerIdentity } from '../components/PlayerIdentity';
@@ -14,6 +15,7 @@ interface StaffPlayer extends Player {
   recent_activity: string | null;
 }
 export function StaffRoles() {
+  const { user } = useAuth();
   const [role, setRole] = useState('all');
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
@@ -46,77 +48,14 @@ export function StaffRoles() {
     }
   };
   return (
-    <>
+    <div className="admin-staff-page">
       <Heading
         title="Staff & Roles"
         detail="A focused directory of the people looking after the game."
       />
-      <div className="admin-filters">
-        <label>
-          Staff role
-          <select
-            value={role}
-            onChange={(e) => {
-              setRole(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="all">All staff</option>
-            <option value="administrators">Administrators</option>
-            <option value="moderators">Moderators</option>
-          </select>
-        </label>
-      </div>
       <Feedback message={message} />
-      {!data ? (
-        <Loading error={error} retry={reload} />
-      ) : (
-        <>
-          <div className="admin-staff-list">
-            {data.results.map((person) => (
-              <article className="mod-card" key={person.id}>
-                <div className="mod-section-title">
-                  <h2>
-                    <PlayerIdentity username={person.username} title={person.title} />
-                  </h2>
-                  <span className="mod-chip">{person.role}</span>
-                </div>
-                <p>
-                  {person.display_name || 'No display name'} · {person.account_status}
-                </p>
-                <p className="mod-muted">
-                  Assigned:{' '}
-                  {person.assigned_at
-                    ? new Date(person.assigned_at).toLocaleString()
-                    : 'Historical assignment date unknown'}
-                </p>
-                <p className="mod-muted">
-                  Recent action:{' '}
-                  {person.recent_activity?.replaceAll('_', ' ') || 'No recorded activity'}
-                </p>
-                <div className="mod-actions">
-                  <Link to={`/moderation/players/${person.id}`}>Review player →</Link>
-                  {person.role === 'Moderator' && (
-                    <button
-                      className="mod-button subtle"
-                      onClick={() => {
-                        setActionError('');
-                        setTarget({ player: person, enabled: false });
-                      }}
-                    >
-                      Remove moderator access
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-          {!data.count && <p className="mod-card mod-empty">No staff match this filter.</p>}
-          <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
-        </>
-      )}
-      <section className="mod-card">
-        <h2>Promote a player</h2>
+      <section className="mod-card" aria-labelledby="promote-player-heading">
+        <h2 id="promote-player-heading">Promote a Player</h2>
         <p className="mod-muted">
           Grant native moderation access. Administrator assignment and removal are
           command-line-only.
@@ -159,6 +98,78 @@ export function StaffRoles() {
         </ul>
         {q && search.data && !search.data.count && <p>No ordinary players match.</p>}
       </section>
+      <section className="mod-card" aria-labelledby="current-staff-heading">
+        <h2 id="current-staff-heading">Current Staff</h2>
+        <div className="admin-filters">
+          <label>
+            Staff role
+            <select
+              value={role}
+              onChange={(e) => {
+                setRole(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="all">All staff</option>
+              <option value="administrators">Administrators</option>
+              <option value="moderators">Moderators</option>
+            </select>
+          </label>
+        </div>
+        {!data ? (
+          <Loading error={error} retry={reload} />
+        ) : (
+          <>
+            <ul className="admin-staff-list" aria-label="Current staff">
+              {data.results.map((person) => (
+                <li className="admin-staff-row" key={person.id}>
+                  <div className="admin-staff-identity">
+                    <strong>
+                      <PlayerIdentity username={person.username} title={person.title} />
+                    </strong>
+                    <span className="mod-muted">{person.display_name || 'No display name'}</span>
+                    <details className="admin-staff-history">
+                      <summary>Role history</summary>
+                      <p>
+                        Assigned:{' '}
+                        {person.assigned_at
+                          ? new Date(person.assigned_at).toLocaleString()
+                          : 'Historical assignment date unknown'}
+                      </p>
+                      <p>
+                        Recent action:{' '}
+                        {person.recent_activity?.replaceAll('_', ' ') || 'No recorded activity'}
+                      </p>
+                    </details>
+                  </div>
+                  <div className="admin-staff-status">
+                    <span className="mod-chip">{person.role}</span>
+                    <span className="mod-muted">{person.account_status}</span>
+                  </div>
+                  <div className="mod-actions admin-staff-actions">
+                    <Link to={`/moderation/players/${person.id}`}>Review player →</Link>
+                    {person.role === 'Moderator' &&
+                      person.can_remove_moderator &&
+                      person.id !== user?.id && (
+                        <button
+                          className="mod-button subtle"
+                          onClick={() => {
+                            setActionError('');
+                            setTarget({ player: person, enabled: false });
+                          }}
+                        >
+                          Remove moderator access
+                        </button>
+                      )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {!data.count && <p className="mod-empty">No staff match this filter.</p>}
+            <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+          </>
+        )}
+      </section>
       {target && (
         <Dialog
           title={target.enabled ? 'Promote to moderator?' : 'Remove moderator access?'}
@@ -186,6 +197,6 @@ export function StaffRoles() {
           </div>
         </Dialog>
       )}
-    </>
+    </div>
   );
 }

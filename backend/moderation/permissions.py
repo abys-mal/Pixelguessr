@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from rest_framework.permissions import BasePermission
 
 
@@ -26,6 +27,16 @@ def is_protected(user):
             permissions__codename="access_workspace",
         ).exists()
     )
+
+
+def validate_sanction_target(actor, target):
+    """Shared imposition policy for native services, Admin forms and model saves."""
+    if actor.pk == target.pk:
+        raise ValidationError({"user": "You cannot sanction your own account."})
+    if is_protected(target) and not is_administrator(actor):
+        raise ValidationError(
+            {"user": "Only administrators can sanction protected staff accounts."}
+        )
 
 
 class WorkspaceAccess(BasePermission):

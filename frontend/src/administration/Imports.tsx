@@ -124,8 +124,7 @@ export function ImageImports() {
             </button>
             <p role="status">{progress}</p>
             <p className="mod-muted">
-              Uploads are pending and labels are unreviewed. Incomplete batches never make images
-              playable.
+              Images remain pending until their labels are reviewed and approval is confirmed.
             </p>
           </section>
         </>
@@ -182,9 +181,7 @@ export function ImageImports() {
           )}
           {!data.count && (
             <p className="mod-card mod-empty">
-              {id
-                ? 'No uploads yet. This batch is saved and ready when you are.'
-                : 'No browser import batches yet.'}
+              {id ? 'No uploads yet. This batch is saved.' : 'No browser import batches yet.'}
             </p>
           )}
           <Pager page={page} next={data.next} previous={data.previous} change={setPage} />

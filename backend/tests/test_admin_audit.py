@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.auth.models import Group, Permission
 from django.contrib.sessions.models import Session
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import RequestFactory
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -334,3 +334,30 @@ def test_image_review_rolls_back_if_audit_write_fails(user, staff, category, mon
         model_admin.approve(request_for(staff), ImageSubmission.objects.filter(pk=image.pk))
     image.refresh_from_db()
     assert image.status == "pending" and image.reviewed_by_id is None
+
+
+def test_admin_cannot_deactivate_self_or_bypass_form_readonly(administrator):
+    model_admin = admin.site._registry[User]
+    request = request_for(administrator)
+    assert "is_active" in model_admin.get_readonly_fields(request, administrator)
+    administrator.is_active = False
+    with pytest.raises(ValidationError, match="own staff account"):
+        model_admin.save_model(request, administrator, None, True)
+    administrator.refresh_from_db()
+    assert administrator.is_active
+
+
+def test_admin_other_account_deactivation_and_self_profile_edit_remain_available(
+    administrator, user
+):
+    model_admin = admin.site._registry[User]
+    request = request_for(administrator)
+    assert "is_active" not in model_admin.get_readonly_fields(request, user)
+    user.is_active = False
+    model_admin.save_model(request, user, None, True)
+    user.refresh_from_db()
+    assert not user.is_active
+    administrator.display_name = "Updated name"
+    model_admin.save_model(request, administrator, None, True)
+    administrator.refresh_from_db()
+    assert administrator.display_name == "Updated name"

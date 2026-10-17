@@ -126,11 +126,12 @@ class Sanction(models.Model):
                 raise ValidationError(
                     "An active or scheduled sanction of this type already exists. Replace it instead."
                 )
+        imposition_fields = ("user_id", "issued_by_id", "kind", "starts_at", "expires_at")
         original = (
             type(self)
             .objects.using(self._state.db or "default")
             .filter(pk=self.pk)
-            .values("issued_by_id", "revoked_by_id", "revoked_at")
+            .values(*imposition_fields, "revoked_by_id", "revoked_at")
             .first()
             if not self._state.adding
             else None
@@ -142,7 +143,20 @@ class Sanction(models.Model):
             or original["revoked_by_id"] != self.revoked_by_id
             or original["revoked_at"] != self.revoked_at
         )
-        from .permissions import is_moderator
+        from .permissions import is_moderator, validate_sanction_target
+
+        imposition_changed = (
+            original is None
+            or any(original[field] != getattr(self, field) for field in imposition_fields)
+            or (original["revoked_at"] is not None and self.revoked_at is None)
+        )
+        if imposition_changed and self.issued_by_id and self.user_id:
+            from accounts.models import User
+
+            # Fresh identities avoid stale role caches at the authoritative save boundary.
+            validate_sanction_target(
+                User.objects.get(pk=self.issued_by_id), User.objects.get(pk=self.user_id)
+            )
 
         if (
             issuer_changed

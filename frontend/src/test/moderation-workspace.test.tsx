@@ -22,6 +22,7 @@ const player = {
 };
 const moderator: User = {
   ...player,
+  id: 'moderator-id',
   email: 'private@example.test',
   moderation_access: true,
   administrator: false,
@@ -644,3 +645,45 @@ it.each(['', '2020-01-01T12:30'])(
     ).toBe(false);
   },
 );
+
+it.each([false, true])(
+  'hides self-sanction actions for staff (administrator=%s)',
+  async (administrator) => {
+    current.user = { ...moderator, id: player.id, administrator };
+    detail = {
+      ...detail,
+      player: { ...player, protected: true, moderator: true, can_remove_moderator: false },
+    };
+    page('/moderation/players/player-id');
+    await screen.findByText('You cannot issue or replace sanctions on your own account.');
+    expect(screen.queryByRole('button', { name: 'Issue sanction' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replace sanction' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Remove moderator access' }),
+    ).not.toBeInTheDocument();
+    if (administrator)
+      expect(screen.getByRole('button', { name: 'Edit player names' })).toBeEnabled();
+  },
+);
+
+it('does not offer moderator removal on another administrator profile', async () => {
+  current.user = { ...moderator, administrator: true };
+  detail = {
+    ...detail,
+    player: { ...player, protected: true, moderator: true, can_remove_moderator: false },
+  };
+  page('/moderation/players/player-id');
+  await screen.findByRole('heading', { name: '@pixelplayer' });
+  expect(screen.queryByRole('button', { name: 'Remove moderator access' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Issue sanction' })).toBeEnabled();
+});
+
+it('offers moderator removal for an eligible native moderator', async () => {
+  current.user = { ...moderator, administrator: true };
+  detail = {
+    ...detail,
+    player: { ...player, protected: true, moderator: true, can_remove_moderator: true },
+  };
+  page('/moderation/players/player-id');
+  expect(await screen.findByRole('button', { name: 'Remove moderator access' })).toBeEnabled();
+});

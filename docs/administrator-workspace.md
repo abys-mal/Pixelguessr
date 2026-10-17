@@ -184,3 +184,31 @@ From `frontend/`, run `npm test`, `npm run lint`, `npm run format:check` and
 `npm run build` (includes TypeScript). Tests use isolated databases and temporary
 media. Verify admin navigation, a moderator's denied direct admin route, pending
 upload preparation, review outcomes, announcement visibility and mobile layouts.
+
+
+## Workspace quality and staff self-action rules
+
+Overview uses a single responsive grid with shared section spacing. Metric cards
+have matching padding and heights; the activity/status panels align in two columns
+and stack on small screens. The image metric reads **Approved images** with an
+explicit explanation that retired entries and records without hosted files are
+excluded. Backend statuses and game-selection rules are unchanged.
+
+Staff & Roles presents **Promote a Player** above **Current Staff**. The latter is
+a compact, role-filtered list with identity, account status and management actions.
+Assignment dates/recent activity remain available under Role history. Ordinary
+players only appear in the separate promotion lookup. Inactive, closed, suspended
+and probation statuses are reported explicitly.
+
+Moderator-removal controls use explicit backend eligibility. Accounts carrying
+Django staff/superuser flags, including the current administrator, cannot be
+managed through either moderator-management API. Both flags remain CLI-only.
+
+Staff cannot impose or replace a sanction on their own account. The native service
+checks before changing an original sanction, and shared model validation also
+covers Django Admin creation and punitive changes to existing records. Moderators
+remain unable to sanction protected staff; administrators may sanction other staff.
+Legacy records remain readable/acknowledgeable, and ordinary profile edits remain
+available. Django Admin excludes the actor from sanction targets and makes their
+own active-account flag read-only with a server-side self-deactivation guard.
+No migrations or changes to existing data are required for these rules.

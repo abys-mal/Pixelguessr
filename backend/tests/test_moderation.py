@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from accounts.backends import AccountBackend
+from accounts.models import User
 from moderation.models import Sanction
 from moderation.services import account_restrictions
 
@@ -34,7 +35,8 @@ def test_warning_acknowledgment_and_expiry(client, user, staff, submission_data)
 
 
 def test_cannot_acknowledge_another_users_warning(client, user, staff):
-    warning = sanction(staff, staff, "warning")
+    owner = User.objects.create_user(username="another_player", email="another-player@example.test")
+    warning = sanction(owner, staff, "warning")
     client.force_authenticate(user)
     assert client.post(f"/api/moderation/sanctions/{warning.pk}/acknowledge/").status_code == 404
 

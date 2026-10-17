@@ -14,6 +14,7 @@ export interface Player {
   is_active: boolean;
   protected: boolean;
   moderator: boolean;
+  can_remove_moderator?: boolean;
 }
 export interface Sanction {
   state: string;
