@@ -41,7 +41,11 @@ class ImageSubmission(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     submitted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="image_submissions"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="image_submissions",
+        null=True,
+        blank=True,
     )
     canonical_answer = models.CharField(max_length=120)
     accepted_synonyms = models.JSONField(default=list, blank=True, validators=[validate_synonyms])
@@ -57,9 +61,10 @@ class ImageSubmission(models.Model):
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="images_reviewed",
     )
+    reviewer_deleted = models.BooleanField(default=False, editable=False)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     # Private import provenance; never accepted or emitted by the public serializers.
@@ -72,7 +77,7 @@ class ImageSubmission(models.Model):
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="images_retired",
     )
     review_reason = models.TextField(max_length=2000, blank=True)
@@ -88,7 +93,10 @@ class ImageSubmission(models.Model):
             ),
             models.CheckConstraint(
                 condition=models.Q(status="pending")
-                | models.Q(reviewed_at__isnull=False, reviewed_by__isnull=False),
+                | (
+                    models.Q(reviewed_at__isnull=False)
+                    & (models.Q(reviewed_by__isnull=False) | models.Q(reviewer_deleted=True))
+                ),
                 name="image_review_required",
             ),
         ]
@@ -100,7 +108,21 @@ class ImageSubmission(models.Model):
             raise ValidationError({"accepted_synonyms": exc.messages}) from exc
         if bool(self.image_file) == bool(self.external_image_url):
             raise ValidationError("Provide exactly one uploaded image or external reference.")
-        if self.status != self.Status.PENDING and (not self.reviewed_by_id or not self.reviewed_at):
+        historical_review = (
+            not self._state.adding
+            and type(self)
+            .objects.filter(
+                pk=self.pk,
+                status=self.status,
+                reviewed_at=self.reviewed_at,
+                reviewed_by__isnull=True,
+                reviewer_deleted=True,
+            )
+            .exists()
+        )
+        if self.status != self.Status.PENDING and (
+            not self.reviewed_at or (not self.reviewed_by_id and not historical_review)
+        ):
             raise ValidationError("Reviewed submissions require a reviewer and timestamp.")
         if self.reviewed_by_id and not self.reviewed_by.is_staff:
             raise ValidationError({"reviewed_by": "Approval requires staff authorization."})
@@ -113,7 +135,9 @@ class ImageSubmission(models.Model):
 class ImportBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -130,3 +154,13 @@ class ImportItem(models.Model):
     )
     error = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class PendingFileDeletion(models.Model):
+    """Durable post-commit cleanup, without account identifiers or credentials."""
+
+    name = models.CharField(max_length=500, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveIntegerField(default=0)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=160, blank=True)

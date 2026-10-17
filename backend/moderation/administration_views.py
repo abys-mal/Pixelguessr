@@ -4,6 +4,8 @@ from django.db.models import Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -56,7 +58,7 @@ def page(request, rows, render):
 def activity(row):
     return {
         "id": str(row.pk),
-        "actor": row.actor.username,
+        "actor": row.actor.username if row.actor else "Deleted staff",
         "actor_id": str(row.actor_id),
         "action": row.action,
         "target_type": row.target_type or "player",
@@ -273,8 +275,6 @@ class ImageDetail(AdministratorView):
 class ImageReview(AdministratorView):
     def post(self, request):
         data = validated(ImageAction, request.data)
-        if data["operation"] == "reject" and not data["reason"].strip():
-            raise ValidationError({"reason": "A rejection reason is required."})
         results = []
         for pk in dict.fromkeys(data["ids"]):
             try:
@@ -382,3 +382,19 @@ class BatchDetail(AdministratorView):
         if upload.size > 8 * 1024 * 1024:
             raise ValidationError({"file": "Maximum upload size is 8 MiB."})
         return Response(item_payload(upload_item(request.user, pk, request_id, upload)), status=201)
+
+
+@method_decorator(sensitive_post_parameters(), name="dispatch")
+class PermanentAccountDeletion(AdministratorView):
+    from rest_framework.throttling import ScopedRateThrottle
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account_change"
+
+    def post(self, request, pk):
+        from .account_deletion import delete_account
+        from .administration_serializers import PermanentDeletionInput
+
+        return Response(
+            delete_account(request.user, pk, validated(PermanentDeletionInput, request.data))
+        )

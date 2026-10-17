@@ -322,8 +322,8 @@ export function ImageLibrary() {
               skipped images.
             </p>
             <label>
-              Reason {operation === 'reject' ? '(required)' : '(optional)'}
-              <textarea name="reason" rows={3} maxLength={2000} required={operation === 'reject'} />
+              Reason (optional)
+              <textarea name="reason" rows={3} maxLength={2000} />
             </label>
             <Feedback error={actionError} />
             <div className="mod-actions">

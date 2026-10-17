@@ -49,7 +49,7 @@ class VerifiedTitle(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="verified_title")
     title = models.CharField(max_length=10, choices=Title)
     verified_by = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name="title_verifications"
+        User, on_delete=models.SET_NULL, related_name="title_verifications", null=True, blank=True
     )
     verified_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)

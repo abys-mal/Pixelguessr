@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { UserRoundXIcon } from './AccountClosure';
+import { Link, useParams } from 'react-router-dom';
 import { AccountSecurity } from './AccountSecurity';
 import { AccountNoticeStatus } from '../components/AccountNoticeStatus';
 import { RankedProfile } from './RankedPublic';
@@ -70,6 +71,12 @@ export function Settings() {
       </div>
       {error && <StatusMessage error>{error}</StatusMessage>}
       {message && <StatusMessage>{message}</StatusMessage>}
+      <footer className="account-settings-footer">
+        <Link className="account-close-link" to="/settings/close-account">
+          <UserRoundXIcon />
+          Close account
+        </Link>
+      </footer>
     </>
   );
 }

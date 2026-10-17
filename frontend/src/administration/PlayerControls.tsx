@@ -3,6 +3,7 @@ import { useAuth } from '../auth/context';
 import { Dialog, Feedback } from '../moderation/components';
 import type { PlayerDetail } from '../moderation/api';
 import { send } from './api';
+import { DeleteAccount } from './DeleteAccount';
 
 export function AdministratorPlayerControls({
   detail,
@@ -44,6 +45,7 @@ export function AdministratorPlayerControls({
           </button>
         ))}
       </div>
+      <DeleteAccount player={detail.player} />
       <Feedback message={message} />
       {operation && (
         <Dialog
@@ -133,14 +135,17 @@ export function AdministratorPlayerControls({
                   effect.
                 </p>
                 {closures.map((s) => (
-                  <blockquote key={s.id}>{s.reason || 'No closure reason provided.'}</blockquote>
+                  <blockquote key={s.id}>
+                    {s.origin === 'voluntary' ? 'Voluntary account closure. ' : ''}
+                    {s.reason || 'No closure reason provided.'}
+                  </blockquote>
                 ))}
               </>
             )}
             {operation !== 'title' && (
               <label>
-                Reason (required)
-                <textarea name="reason" rows={3} required maxLength={2000} />
+                Reason (optional)
+                <textarea name="reason" rows={3} maxLength={2000} />
               </label>
             )}
             <Feedback error={error} />

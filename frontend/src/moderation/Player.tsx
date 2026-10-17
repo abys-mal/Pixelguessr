@@ -127,6 +127,7 @@ function SanctionForm({
             <option value="fair_play">Fair play</option>
             <option value="sportsmanship">Sportsmanship</option>
             <option value="integrity">Platform integrity</option>
+            <option value="other">Other</option>
           </select>
         </label>
         {!['warning', 'closed'].includes(kind) && (
@@ -289,7 +290,10 @@ export function PlayerDetail({ id }: { id: string }) {
           <article className="mod-sanction" key={s.id}>
             <div className="mod-section-title">
               <span className={`mod-chip ${s.kind}`}>{label(s.kind)}</span>
-              <small>Issued by @{s.issued_by}</small>
+              <small>
+                {s.origin === 'voluntary' ? 'Voluntary closure requested by' : 'Issued by'} @
+                {s.issued_by}
+              </small>
             </div>
             <p>{s.reason || 'No public reason provided.'}</p>
             {s.internal_note && (

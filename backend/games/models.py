@@ -64,10 +64,11 @@ class Participant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="participants")
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
     )
     guest = models.ForeignKey(GuestIdentity, null=True, blank=True, on_delete=models.PROTECT)
     party_member = models.ForeignKey("PartyMember", null=True, blank=True, on_delete=models.PROTECT)
+    identity_deleted = models.BooleanField(default=False)
     total_score = models.PositiveIntegerField(default=0)
     decisive_wins = models.PositiveSmallIntegerField(default=0)
     rating_before = models.PositiveIntegerField(null=True, blank=True)
@@ -81,8 +82,9 @@ class Participant(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(user__isnull=False, guest__isnull=True)
-                | models.Q(user__isnull=True, guest__isnull=False),
+                condition=models.Q(user__isnull=False, guest__isnull=True, identity_deleted=False)
+                | models.Q(user__isnull=True, guest__isnull=False, identity_deleted=False)
+                | models.Q(user__isnull=True, guest__isnull=True, identity_deleted=True),
                 name="participant_one_identity",
             ),
             models.UniqueConstraint(
@@ -98,7 +100,12 @@ class Participant(models.Model):
         ]
 
     def clean(self):
-        if self.match_id and self.match.mode == Match.Mode.RANKED and not self.user_id:
+        if (
+            self.match_id
+            and self.match.mode == Match.Mode.RANKED
+            and not self.user_id
+            and not self.identity_deleted
+        ):
             raise ValidationError("Ranked participants require registered accounts.")
 
 
@@ -111,7 +118,9 @@ class Round(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="rounds")
-    image = models.ForeignKey("library.ImageSubmission", on_delete=models.PROTECT)
+    image = models.ForeignKey(
+        "library.ImageSubmission", on_delete=models.SET_NULL, null=True, blank=True
+    )
     number = models.PositiveIntegerField()
     start_request_id = models.UUIDField(null=True, blank=True, unique=True)
     grid_size = models.PositiveSmallIntegerField(default=20)
@@ -243,9 +252,10 @@ class PartyMember(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="members")
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
     )
     guest = models.ForeignKey(GuestIdentity, null=True, blank=True, on_delete=models.PROTECT)
+    identity_deleted = models.BooleanField(default=False)
     display_name = models.CharField(max_length=40)
     name_key = models.CharField(max_length=120)
     joined_at = models.DateTimeField(auto_now_add=True)
@@ -257,8 +267,9 @@ class PartyMember(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(user__isnull=False, guest__isnull=True)
-                | models.Q(user__isnull=True, guest__isnull=False),
+                condition=models.Q(user__isnull=False, guest__isnull=True, identity_deleted=False)
+                | models.Q(user__isnull=True, guest__isnull=False, identity_deleted=False)
+                | models.Q(user__isnull=True, guest__isnull=True, identity_deleted=True),
                 name="party_member_one_identity",
             ),
             models.UniqueConstraint(

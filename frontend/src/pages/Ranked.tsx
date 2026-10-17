@@ -240,10 +240,16 @@ function RankedGame({ id }: { id: string }) {
       <div className="panel duel-scoreboard">
         {state.players.map((p) => (
           <div key={p.id} className="duel-player">
-            <Link to={`/players/${encodeURIComponent(p.username)}`}>
-              <PlayerIdentity username={p.username} title={p.title} />
-            </Link>
-            <span className="muted">{complete ? p.rating_after : p.rating_before} Elo </span>
+            {p.deleted ? (
+              <span>Deleted player</span>
+            ) : (
+              <Link to={`/players/${encodeURIComponent(p.username)}`}>
+                <PlayerIdentity username={p.username} title={p.title} />
+              </Link>
+            )}
+            {!p.deleted && (
+              <span className="muted">{complete ? p.rating_after : p.rating_before} Elo </span>
+            )}
             <strong aria-label={`${p.username} wins`}>{p.wins}</strong>
           </div>
         ))}
@@ -267,13 +273,17 @@ function RankedGame({ id }: { id: string }) {
                 <h2>
                   <PlayerIdentity username={p.username} title={p.title} />
                 </h2>
-                <p>
-                  {p.rating_before} → <strong>{p.rating_after}</strong> Elo
-                </p>
-                <Badge tone={p.rating_delta! > 0 ? 'mint' : ''}>
-                  {p.rating_delta! > 0 ? '+' : ''}
-                  {p.rating_delta} Elo
-                </Badge>
+                {!p.deleted && (
+                  <>
+                    <p>
+                      {p.rating_before} → <strong>{p.rating_after}</strong> Elo
+                    </p>
+                    <Badge tone={p.rating_delta! > 0 ? 'mint' : ''}>
+                      {p.rating_delta! > 0 ? '+' : ''}
+                      {p.rating_delta} Elo
+                    </Badge>
+                  </>
+                )}
               </div>
             ))}
           </div>

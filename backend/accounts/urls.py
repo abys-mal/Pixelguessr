@@ -5,15 +5,19 @@ from .views import (
     ChangeEmailView,
     ChangePasswordView,
     ChangeUsernameView,
+    CloseAccountView,
     CsrfView,
     LoginView,
     LogoutView,
     MeView,
     ProfileView,
     RegisterView,
+    VerifyClosurePasswordView,
 )
 
 urlpatterns = [
+    path("close-account/", CloseAccountView.as_view()),
+    path("verify-closure-password/", VerifyClosurePasswordView.as_view()),
     path("settings/", AccountSettingsView.as_view()),
     path("change-username/", ChangeUsernameView.as_view()),
     path("change-email/", ChangeEmailView.as_view()),

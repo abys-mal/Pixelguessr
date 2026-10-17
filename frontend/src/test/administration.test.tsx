@@ -261,13 +261,13 @@ it('edits reviewed labels and uses the real reveal endpoint', async () => {
     category: 2,
   });
 });
-it('bulk rejection requires a reason and reports explicit outcomes', async () => {
+it('bulk rejection accepts an optional reason and reports explicit outcomes', async () => {
   show('/moderation/administration/images');
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Select rose' }));
   await userEvent.click(screen.getByRole('button', { name: /^Reject$/ }));
   const dialog = within(screen.getByRole('dialog'));
-  expect(dialog.getByLabelText('Reason (required)')).toBeRequired();
-  await userEvent.type(dialog.getByLabelText('Reason (required)'), 'Ambiguous flower');
+  expect(dialog.getByLabelText('Reason (optional)')).not.toBeRequired();
+  await userEvent.type(dialog.getByLabelText('Reason (optional)'), 'Ambiguous flower');
   await userEvent.click(dialog.getByRole('button', { name: 'Confirm action' }));
   expect(await screen.findByRole('heading', { name: 'Action results' })).toBeInTheDocument();
   expect(screen.getByText('1 successful · 0 skipped · 0 failed')).toBeInTheDocument();
@@ -296,13 +296,13 @@ it('announcement body renders as text and editing remains admin only', async () 
   expect(document.querySelector('script')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Edit announcement' })).not.toBeInTheDocument();
 });
-it('shows admin player controls and requires Elo correction reason', async () => {
+it('shows admin player controls and accepts an optional Elo reason', async () => {
   show('/moderation/players/ordinary-id');
   await userEvent.click(await screen.findByRole('button', { name: 'Override Elo' }));
   const dialog = within(screen.getByRole('dialog'));
-  expect(dialog.getByLabelText('Reason (required)')).toBeRequired();
+  expect(dialog.getByLabelText('Reason (optional)')).not.toBeRequired();
   fireEvent.change(dialog.getByLabelText('New Elo'), { target: { value: '1200' } });
-  await userEvent.type(dialog.getByLabelText('Reason (required)'), 'Correction');
+  await userEvent.type(dialog.getByLabelText('Reason (optional)'), 'Correction');
   await userEvent.click(dialog.getByRole('button', { name: 'Confirm change' }));
   await screen.findByText('Administrator changes saved.');
   expect(

@@ -811,9 +811,9 @@ def payload(party, member, now):
         "image_url": f"/api/parties/{party.code}/rounds/{game_round.pk}/image/?v={count}",
         "completion": {
             "answer": game_round.answer_snapshot,
-            "license": game_round.image.license,
-            "attribution": game_round.image.attribution,
-            "category": game_round.image.category.name,
+            "license": game_round.image.license if game_round.image else "",
+            "attribution": game_round.image.attribution if game_round.image else "",
+            "category": game_round.image.category.name if game_round.image else "Unavailable",
         }
         if game_round.ended_at
         else None,

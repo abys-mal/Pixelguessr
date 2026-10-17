@@ -256,8 +256,6 @@ def test_reopen_retains_other_sanctions_and_emits_safe_notice(client, administra
         {"kind": "closed", "category": "integrity", "reason": "Original closure"},
     )
     probation = issue(administrator, user.pk, {"kind": "probation", "category": "fair_play"})
-    with pytest.raises(ValidationError):
-        manage_player(administrator, user.pk, "reopen", {"reason": ""})
     manage_player(administrator, user.pk, "reopen", {"reason": "PRIVATE review reason"})
     closure.refresh_from_db()
     probation.refresh_from_db()
@@ -376,7 +374,9 @@ def test_image_edit_reviews_retire_restore_and_private_reveal(
     assert client.get(f"/api/library/submissions/{image.pk}/preview/").status_code == 403
 
 
-def test_bulk_results_are_explicit_and_rejection_requires_reason(client, administrator, category):
+def test_bulk_results_are_explicit_and_administrator_reason_is_optional(
+    client, administrator, category
+):
     image = add_image(client, administrator, category)
     result = client.post(
         ROOT + "images/review/",
@@ -384,12 +384,6 @@ def test_bulk_results_are_explicit_and_rejection_requires_reason(client, adminis
         format="json",
     ).json()
     assert [row["status"] for row in result["results"]] == ["success", "failed"]
-    assert (
-        client.post(
-            ROOT + "images/review/", {"operation": "reject", "ids": [str(image.pk)]}, format="json"
-        ).status_code
-        == 400
-    )
     result = client.post(
         ROOT + "images/review/",
         {"operation": "reject", "ids": [str(image.pk)], "reason": "Ambiguous subject"},

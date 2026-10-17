@@ -16,6 +16,7 @@ def review_images(queryset, reviewer, status):
         for image in queryset:
             image.status = status
             image.reviewed_by = reviewer
+            image.reviewer_deleted = False
             image.reviewed_at = timezone.now()
             image.full_clean()
-            image.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+            image.save(update_fields=["status", "reviewed_by", "reviewed_at", "reviewer_deleted"])

@@ -187,3 +187,16 @@ class PasswordChangeSerializer(AccountChangeSerializer):
         if attrs["new_password"] != attrs["password_confirm"]:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
         return attrs
+
+
+class ClosurePasswordSerializer(serializers.Serializer):
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and set(data) - set(self.fields):
+            raise serializers.ValidationError({"detail": "Unexpected fields."})
+        return super().to_internal_value(data)
+
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=128)
+
+
+class CloseAccountSerializer(ClosurePasswordSerializer):
+    confirmation = serializers.CharField(trim_whitespace=False, max_length=32)

@@ -25,10 +25,10 @@ expiry. Content renders as plain text. Version checks reject stale saves.
 Existing player details at `/moderation/players/<id>` add administrator controls:
 
 - **Elo override:** integer from the configured rating floor (normally 100) through
-  2,147,483,647, with a required reason. Updates the authoritative rating and any
+  2,147,483,647, with an optional reason. Updates the authoritative rating and any
   queued rating snapshot. Tiers remain derived from Elo. An active ranked duel
   must finish first; historical matches and rating snapshots are preserved.
-- **Reopen account:** requires a reason and confirmation showing the original
+- **Reopen account:** offers an optional reason and requires confirmation showing the original
   closure reasons. Reverses active closure sanctions through existing services,
   preserves their records and unrelated sanctions, and adds a safe player notice.
 - **Honorary title:** exactly PRO, MASTER or LEGEND; assignment replaces the single
@@ -53,7 +53,7 @@ are not persisted; uploaded items and their labels survive leaving the page.
 New images start pending with unverified labels. Open **Prepare labels**, enter
 answers/synonyms/category, and **Save reviewed labels**. This explicitly records
 label review; it does not approve the image. The library then provides individual
-or selected-image approval, rejection with a required reason, retirement and
+or selected-image approval, rejection with an optional reason, retirement and
 restoration. Bulk actions validate each unique ID independently (maximum 50),
 commit each successful item, and report success, skipped or failed per image.
 
@@ -118,7 +118,7 @@ Django Admin. Existing protected-account moderation rules remain in force.
 - Existing VerifiedTitle is reused. No competing title or audit table is added.
 
 Administrative mutations audit actor, target, timestamp, relevant before/after
-values and required reasons. Pixelguessr exposes no audit write/delete endpoint.
+values and any optional routine reasons. Pixelguessr exposes no audit write/delete endpoint.
 Passwords, session tokens and environment configuration are not audit payloads.
 Transactions and the existing ranked/player writer ordering protect multi-record
 changes; image reviews return explicit per-item outcomes.
@@ -212,3 +212,8 @@ Legacy records remain readable/acknowledgeable, and ordinary profile edits remai
 available. Django Admin excludes the actor from sanction targets and makes their
 own active-account flag read-only with a server-side self-deactivation guard.
 No migrations or changes to existing data are required for these rules.
+
+
+For voluntary closure, verified permanent erasure, and CLI password reset, see
+[account lifecycle and data retention](account-lifecycle.md). Permanent erasure
+is a sensitive new tool and always requires a reason and password verification.

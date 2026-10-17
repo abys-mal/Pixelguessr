@@ -1,12 +1,13 @@
 import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { Page } from '../api';
 import { root, type Player } from './api';
-import { Heading, Loading, Pager } from './components';
+import { Heading, Loading, Pager, Feedback } from './components';
 import { useData } from './useData';
 
 export function ModerationPlayers() {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -19,6 +20,9 @@ export function ModerationPlayers() {
         title="Players"
         detail="Find an account. Review its history. Take action when needed."
       />
+      {location.state?.accountDeleted && (
+        <Feedback message="Account permanently deleted. Approved images and shared history were preserved anonymously." />
+      )}
       <form
         className="mod-search"
         onSubmit={(event) => {

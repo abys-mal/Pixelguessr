@@ -15,11 +15,13 @@ export interface Player {
   protected: boolean;
   moderator: boolean;
   can_remove_moderator?: boolean;
+  deletion_eligible?: boolean;
 }
 export interface Sanction {
   state: string;
   id: string;
   kind: Kind;
+  origin?: 'disciplinary' | 'voluntary';
   category: string;
   reason: string;
   internal_note: string;

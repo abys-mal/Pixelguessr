@@ -190,7 +190,7 @@ def moderation_blockers(players, now):
     for user_id, kind in rows:
         if priority[kind] > priority.get(result.get(user_id), 0):
             result[user_id] = kind
-    result.update({p.user_id: "closed" for p in players if not p.user.is_active})
+    result.update({p.user_id: "closed" for p in players if not p.user or not p.user.is_active})
     return result
 
 
@@ -649,12 +649,15 @@ def payload(match, user, now, *, snapshot=None):
         "players": [
             {
                 "id": str(p.pk),
-                "username": p.user.username,
+                "username": p.user.username if p.user else "Deleted player",
+                "deleted": p.identity_deleted,
                 "title": honorary_title(p.user),
                 "rating_before": p.rating_before,
                 "rating_after": p.rating_after,
                 "rating_delta": p.rating_delta,
-                "tier": tier(p.rating_after if p.rating_after is not None else p.rating_before),
+                "tier": None
+                if p.identity_deleted
+                else tier(p.rating_after if p.rating_after is not None else p.rating_before),
                 "wins": p.decisive_wins,
                 "connected": connected(p, now),
                 "reconnect_until": (
@@ -697,8 +700,8 @@ def payload(match, user, now, *, snapshot=None):
         "guessed_ids": [str(s.participant_id) for s in states if s.ranked_guessed_at],
         "completion": {
             "answer": game_round.answer_snapshot,
-            "license": game_round.image.license,
-            "attribution": game_round.image.attribution,
+            "license": game_round.image.license if game_round.image else "",
+            "attribution": game_round.image.attribution if game_round.image else "",
         }
         if completed
         else None,

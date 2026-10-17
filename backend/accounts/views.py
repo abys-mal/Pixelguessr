@@ -157,3 +157,40 @@ class ChangeEmailView(AccountChangeView):
 class ChangePasswordView(AccountChangeView):
     operation = "password"
     serializer_class = PasswordChangeSerializer
+
+
+@method_decorator(csrf_protect, name="dispatch")
+@method_decorator(never_cache, name="dispatch")
+@method_decorator(sensitive_post_parameters(), name="dispatch")
+class VerifyClosurePasswordView(APIView):
+    permission_classes = [IsAuthenticated, AccountAccess]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account_change"
+
+    def post(self, request):
+        from .lifecycle import verify_password
+        from .serializers import ClosurePasswordSerializer
+
+        serializer = ClosurePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        verify_password(request.user.pk, serializer.validated_data["current_password"])
+        return Response(status=204)
+
+
+@method_decorator(csrf_protect, name="dispatch")
+@method_decorator(never_cache, name="dispatch")
+@method_decorator(sensitive_post_parameters(), name="dispatch")
+class CloseAccountView(APIView):
+    permission_classes = [IsAuthenticated, AccountAccess]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account_change"
+
+    def post(self, request):
+        from .lifecycle import close_account
+        from .serializers import CloseAccountSerializer
+
+        serializer = CloseAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        close_account(request.user.pk, **serializer.validated_data)
+        logout(request)
+        return Response({"detail": "Your account has been voluntarily closed. You are signed out."})

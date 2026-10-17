@@ -16,6 +16,8 @@ def session_payload(request):
             "user": None,
             "restrictions": None,
             "account_closed": True,
-            "closure_message": "Your account has been closed.",
+            "closure_message": "You voluntarily closed your account."
+            if active_sanctions(user).filter(kind="closed", origin="voluntary").exists()
+            else "Your account has been closed.",
         }
     return {"user": UserSerializer(user).data, "restrictions": restrictions}

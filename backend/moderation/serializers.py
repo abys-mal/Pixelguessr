@@ -4,6 +4,13 @@ from .models import Report, Sanction
 
 
 class ReportSerializer(serializers.ModelSerializer):
+    details = serializers.CharField(max_length=2000, allow_blank=True, required=False, default="")
+
+    def validate(self, attrs):
+        if attrs.get("category") != "other" and not attrs.get("details", "").strip():
+            raise serializers.ValidationError({"details": "This field is required."})
+        return attrs
+
     class Meta:
         model = Report
         fields = ["id", "subject", "category", "details", "created_at"]

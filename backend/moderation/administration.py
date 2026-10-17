@@ -44,8 +44,6 @@ def manage_player(actor, pk, operation, data):
     target = lock_player(pk)
     actor = require_administrator(actor)
     reason = data.get("reason", "").strip()
-    if operation in {"rating", "reopen"} and not reason:
-        raise ValidationError({"reason": "A reason is required."})
     if operation == "rating":
         value = data["rating"]
         if (
@@ -206,7 +204,7 @@ def review_image(actor, pk, operation, reason=""):
     image = get_object_or_404(ImageSubmission, pk=pk)
     before = image_values(image)
     if operation in {"approve", "reject"}:
-        if operation == "reject" and not reason.strip():
+        if operation == "reject" and not is_administrator(actor) and not reason.strip():
             raise ValidationError({"reason": "A rejection reason is required."})
         expected = "approved" if operation == "approve" else "rejected"
         if image.status == expected:

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin, UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.contrib.auth.models import Group
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -46,8 +46,35 @@ class PixelUserAdmin(UserAdmin):
     add_fieldsets = UserAdmin.add_fieldsets + ((None, {"fields": ("email",)}),)
     readonly_fields = ("rating", "ranked_tier", "is_staff", "is_superuser")
 
+    def user_change_password(self, request, id, form_url=""):
+        raise PermissionDenied(
+            "Administrator password resets are command-line-only. Use reset_player_password."
+        )
+
+    def get_fieldsets(self, request, obj=None):
+        fields = super().get_fieldsets(request, obj)
+        if obj:
+            return [
+                (
+                    name,
+                    {
+                        **options,
+                        "fields": tuple(
+                            field for field in options["fields"] if field != "password"
+                        ),
+                    },
+                )
+                for name, options in fields
+            ]
+        return fields
+
     def save_model(self, request, obj, form, change):
+        from games.ranked import gate
+
+        gate()
         previous = User.objects.filter(pk=obj.pk).first() if change else None
+        if previous and previous.password != obj.password:
+            raise ValidationError("Administrator password resets are command-line-only.")
         if previous and obj.pk == request.user.pk and not obj.is_active:
             raise ValidationError("You cannot deactivate your own staff account.")
         if (
@@ -58,14 +85,15 @@ class PixelUserAdmin(UserAdmin):
         super().save_model(request, obj, form, change)
 
     def has_delete_permission(self, request, obj=None):
-        if obj and (obj.is_staff or obj.is_superuser):
-            return False
-        return super().has_delete_permission(request, obj)
+        return False  # All web erasure goes through the verified workspace tool.
 
     def delete_queryset(self, request, queryset):
         if queryset.filter(models.Q(is_staff=True) | models.Q(is_superuser=True)).exists():
             raise ValidationError("Administrator and staff account removal is command-line-only.")
-        super().delete_queryset(request, queryset)
+        raise PermissionDenied("Use verified permanent deletion in the administrator workspace.")
+
+    def delete_model(self, request, obj):
+        raise PermissionDenied("Use verified permanent deletion in the administrator workspace.")
 
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
@@ -86,6 +114,12 @@ admin.site.unregister(Group)
 
 @admin.register(Group)
 class AdministrativeGroupAdmin(GroupAdmin):
+    def save_model(self, request, obj, form, change):
+        from games.ranked import gate
+
+        gate()
+        super().save_model(request, obj, form, change)
+
     # Group edits delegate permissions, so model permissions alone cannot authorize them.
     def has_add_permission(self, request):
         return request.user.is_superuser and super().has_add_permission(request)

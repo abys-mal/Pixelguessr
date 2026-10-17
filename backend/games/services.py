@@ -331,9 +331,9 @@ def snapshot(game_round, now=None):
             if state == "solved"
             else None,
             "guesses": result["guess_count"],
-            "license": game_round.image.license,
-            "attribution": game_round.image.attribution,
-            "category": game_round.image.category.name,
+            "license": game_round.image.license if game_round.image else "",
+            "attribution": game_round.image.attribution if game_round.image else "",
+            "category": game_round.image.category.name if game_round.image else "Unavailable",
         }
     return result
 

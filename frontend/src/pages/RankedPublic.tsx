@@ -233,9 +233,13 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
                 <tr key={entry.id}>
                   <td>{new Date(entry.date).toLocaleDateString()}</td>
                   <td>
-                    <Link to={`/players/${encodeURIComponent(entry.opponent)}`}>
-                      <PlayerIdentity username={entry.opponent} title={entry.opponent_title} />
-                    </Link>
+                    {entry.opponent_deleted ? (
+                      <span>Deleted player</span>
+                    ) : (
+                      <Link to={`/players/${encodeURIComponent(entry.opponent)}`}>
+                        <PlayerIdentity username={entry.opponent} title={entry.opponent_title} />
+                      </Link>
+                    )}
                   </td>
                   <td>
                     <span className={`history-outcome history-outcome-${entry.outcome}`}>

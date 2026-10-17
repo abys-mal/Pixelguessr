@@ -6,6 +6,7 @@ import { Leaderboards } from './pages/RankedPublic';
 import { Home } from './pages/Home';
 import { Singleplayer } from './pages/Singleplayer';
 import { Mode } from './pages/Mode';
+import { AccountClosure, AccountClosed } from './pages/AccountClosure';
 import { AuthPage } from './pages/Auth';
 import { Profile, Settings } from './pages/Account';
 import { Notices } from './pages/Notices';
@@ -56,6 +57,8 @@ export function App() {
         <Route path="login" element={<AuthPage key="login" />} />
         <Route path="register" element={<AuthPage key="register" register />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings/close-account" element={<AccountClosure />} />
+        <Route path="account-closed" element={<AccountClosed />} />
         <Route path="settings/account" element={<Settings />} />
         <Route path="settings" element={<Settings />} />
         <Route path="account-notices" element={<Notices />} />

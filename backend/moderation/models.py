@@ -12,12 +12,17 @@ class Category(models.TextChoices):
     FAIR_PLAY = "fair_play", "Fair Play"
     SPORTSMANSHIP = "sportsmanship", "Sportsmanship and Community Guidelines"
     INTEGRITY = "integrity", "Platform Integrity"
+    OTHER = "other", "Other"
 
 
 class Report(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reporter = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reports_filed"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="reports_filed",
+        null=True,
+        blank=True,
     )
     subject = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reports_received"
@@ -33,7 +38,7 @@ class Report(models.Model):
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="reports_resolved",
     )
 
@@ -58,7 +63,17 @@ class Sanction(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sanctions"
     )
     issued_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sanctions_issued"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="sanctions_issued",
+        null=True,
+        blank=True,
+    )
+    origin = models.CharField(
+        max_length=16,
+        choices=[("disciplinary", "Disciplinary"), ("voluntary", "Voluntary closure")],
+        default="disciplinary",
+        editable=False,
     )
     category = models.CharField(max_length=20, choices=Category)
     kind = models.CharField(max_length=12, choices=Kind)
@@ -70,12 +85,13 @@ class Sanction(models.Model):
     starts_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField(null=True, blank=True)
     acknowledged_at = models.DateTimeField(null=True, blank=True)
+    revoker_deleted = models.BooleanField(default=False, editable=False)
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="sanctions_revoked",
     )
 
@@ -99,13 +115,19 @@ class Sanction(models.Model):
             models.CheckConstraint(
                 condition=(
                     models.Q(revoked_at__isnull=True, revoked_by__isnull=True)
-                    | models.Q(revoked_at__isnull=False, revoked_by__isnull=False)
+                    | (
+                        models.Q(revoked_at__isnull=False)
+                        & (models.Q(revoked_by__isnull=False) | models.Q(revoker_deleted=True))
+                    )
                 ),
                 name="sanction_revocation_audited",
             ),
         ]
 
     def clean(self):
+        voluntary = self.origin == "voluntary"
+        if voluntary and (self.kind != "closed" or self.user_id != self.issued_by_id):
+            raise ValidationError("Voluntary closure must be initiated by its account owner.")
         if self.kind == self.Kind.WARNING:
             self.expires_at = self.starts_at + timedelta(days=90)
         if self.kind == self.Kind.CLOSED and self.expires_at:
@@ -126,7 +148,7 @@ class Sanction(models.Model):
                 raise ValidationError(
                     "An active or scheduled sanction of this type already exists. Replace it instead."
                 )
-        imposition_fields = ("user_id", "issued_by_id", "kind", "starts_at", "expires_at")
+        imposition_fields = ("user_id", "issued_by_id", "kind", "starts_at", "expires_at", "origin")
         original = (
             type(self)
             .objects.using(self._state.db or "default")
@@ -150,7 +172,7 @@ class Sanction(models.Model):
             or any(original[field] != getattr(self, field) for field in imposition_fields)
             or (original["revoked_at"] is not None and self.revoked_at is None)
         )
-        if imposition_changed and self.issued_by_id and self.user_id:
+        if imposition_changed and not voluntary and self.issued_by_id and self.user_id:
             from accounts.models import User
 
             # Fresh identities avoid stale role caches at the authoritative save boundary.
@@ -160,10 +182,13 @@ class Sanction(models.Model):
 
         if (
             issuer_changed
+            and not voluntary
             and self.issued_by_id
             and not (self.issued_by.is_staff or is_moderator(self.issued_by))
         ):
             raise ValidationError({"issued_by": "Sanctions require staff authorization."})
+        if revocation_changed and self.revoked_at and not self.revoked_by_id:
+            raise ValidationError({"revoked_by": "A new revocation requires an actor."})
         if revocation_changed and self.revoked_by_id:
             if not (self.revoked_by.is_staff or is_moderator(self.revoked_by)):
                 raise ValidationError({"revoked_by": "Revocation requires staff authorization."})
@@ -190,10 +215,15 @@ class Sanction(models.Model):
                 Activity.objects.create(
                     user_id=self.user_id,
                     actor_id=self.issued_by_id,
-                    action="sanction_replaced" if self.replaces_id else "sanction_issued",
+                    action="voluntary_closure"
+                    if self.origin == "voluntary"
+                    else "sanction_replaced"
+                    if self.replaces_id
+                    else "sanction_issued",
                     sanction=self,
                     changes={
                         "kind": self.kind,
+                        "origin": self.origin,
                         "category": self.category,
                         "reason": self.reason,
                         "internal_note": self.internal_note,
@@ -249,7 +279,7 @@ class Appeal(models.Model):
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="appeals_resolved",
     )
 
@@ -277,13 +307,17 @@ class Activity(models.Model):
         blank=True,
     )
     actor = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="moderation_actions"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="moderation_actions",
+        null=True,
+        blank=True,
     )
     action = models.CharField(max_length=40)
     created_at = models.DateTimeField(default=timezone.now)
-    sanction = models.ForeignKey(Sanction, null=True, blank=True, on_delete=models.PROTECT)
-    report = models.ForeignKey(Report, null=True, blank=True, on_delete=models.PROTECT)
-    appeal = models.ForeignKey(Appeal, null=True, blank=True, on_delete=models.PROTECT)
+    sanction = models.ForeignKey(Sanction, null=True, blank=True, on_delete=models.SET_NULL)
+    report = models.ForeignKey(Report, null=True, blank=True, on_delete=models.SET_NULL)
+    appeal = models.ForeignKey(Appeal, null=True, blank=True, on_delete=models.SET_NULL)
     changes = models.JSONField(default=dict, blank=True)
     target_type = models.CharField(max_length=32, blank=True)
     target_id = models.CharField(max_length=64, blank=True)
@@ -301,5 +335,5 @@ class StaffAnnouncement(models.Model):
     published = models.BooleanField(default=False)
     expires_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
-    editor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT)
+    editor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     version = models.PositiveIntegerField(default=0)

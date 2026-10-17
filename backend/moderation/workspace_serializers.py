@@ -61,7 +61,7 @@ def player_summary(user):
 
 class StaffSanction(serializers.ModelSerializer):
     state = serializers.SerializerMethodField()
-    issued_by = serializers.CharField(source="issued_by.username")
+    issued_by = serializers.CharField(source="issued_by.username", default="Deleted staff")
     revoked_by = serializers.CharField(source="revoked_by.username", allow_null=True)
     active = serializers.SerializerMethodField()
 
@@ -89,6 +89,7 @@ class StaffSanction(serializers.ModelSerializer):
         fields = [
             "id",
             "kind",
+            "origin",
             "category",
             "reason",
             "internal_note",
@@ -106,7 +107,7 @@ class StaffSanction(serializers.ModelSerializer):
 
 class StaffReport(serializers.ModelSerializer):
     subject = serializers.SerializerMethodField()
-    reporter = serializers.CharField(source="reporter.username")
+    reporter = serializers.CharField(source="reporter.username", default="Deleted player")
 
     def get_subject(self, obj):
         return player_summary(obj.subject)
@@ -167,13 +168,18 @@ class PlayerNotice(serializers.ModelSerializer):
         return eligibility(obj.user, obj)
 
     def get_reason(self, obj):
-        return obj.reason or "A moderation notice has been applied to your account."
+        return obj.reason or (
+            "Account voluntarily closed by its owner."
+            if obj.origin == "voluntary"
+            else "A moderation notice has been applied to your account."
+        )
 
     class Meta:
         model = Sanction
         fields = [
             "id",
             "kind",
+            "origin",
             "category",
             "reason",
             "starts_at",
@@ -186,7 +192,7 @@ class PlayerNotice(serializers.ModelSerializer):
 
 
 class StaffActivity(serializers.ModelSerializer):
-    actor = serializers.CharField(source="actor.username")
+    actor = serializers.CharField(source="actor.username", default="Deleted staff")
 
     class Meta:
         model = Activity

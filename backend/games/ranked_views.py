@@ -174,7 +174,8 @@ class HistoryView(PublicRankedView):
                 {
                     "id": str(entry.match_id),
                     "date": entry.match.completed_at.isoformat(),
-                    "opponent": opponent.user.username,
+                    "opponent": opponent.user.username if opponent.user else "Deleted player",
+                    "opponent_deleted": opponent.identity_deleted,
                     "opponent_title": honorary_title(opponent.user),
                     "outcome": "no_contest"
                     if entry.match.ranked_outcome == "no_contest"

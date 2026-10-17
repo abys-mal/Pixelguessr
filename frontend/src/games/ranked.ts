@@ -12,6 +12,7 @@ export interface QueueState {
   tier?: string | null;
 }
 export interface DuelPlayer {
+  deleted?: boolean;
   title?: string | null;
   id: string;
   username: string;
@@ -60,6 +61,7 @@ export interface Standing {
   tier: string | null;
 }
 export interface HistoryEntry {
+  opponent_deleted?: boolean;
   opponent_title?: string | null;
   id: string;
   date: string;

@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { SanctionBanner } from '../components/SanctionBanner';
-import { Badge } from '../components/ui';
 import { modes } from '../modes';
 
 export function Home() {
@@ -24,7 +23,6 @@ export function Home() {
             <br className="desktop-break" /> connect the dots, and find the bigger picture.
           </p>
           <div className="hero-note">
-            <Badge tone="mint">Ready to play</Badge>
             <span>Singleplayer is here. A fresh picture is waiting.</span>
           </div>
         </div>
@@ -75,7 +73,6 @@ export function Home() {
                 <span className="mode-icon" aria-hidden="true">
                   {mode.icon}
                 </span>
-                <Badge tone="mint">Playable</Badge>
               </div>
               <p className="eyebrow">{mode.eyebrow}</p>
               <h3>{mode.label}</h3>

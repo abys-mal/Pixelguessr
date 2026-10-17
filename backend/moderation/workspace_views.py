@@ -77,10 +77,16 @@ class Players(WorkspaceView):
 
 class Player(WorkspaceView):
     def get(self, request, pk):
+        from .account_deletion import deletion_eligible
+
         user = get_object_or_404(visible_players(request), pk=pk)
         return Response(
             {
-                "player": player_summary(user),
+                "player": {
+                    **player_summary(user),
+                    "deletion_eligible": is_administrator(request.user)
+                    and deletion_eligible(request.user, user),
+                },
                 "sanctions": StaffSanction(
                     user.sanctions.select_related("issued_by", "revoked_by").order_by(
                         "-starts_at", "id"

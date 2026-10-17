@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.Overview.as_view()),
     path("staff/", views.Staff.as_view()),
     path("players/", views.PlayerSearch.as_view()),
+    path("players/<uuid:pk>/delete/", views.PermanentAccountDeletion.as_view()),
     path("players/<uuid:pk>/", views.PlayerControl.as_view()),
     path("announcement/", views.Announcement.as_view()),
     path("audit/", views.AuditLog.as_view()),
