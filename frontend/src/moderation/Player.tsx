@@ -17,6 +17,8 @@ import { useData } from './useData';
 import { PlayerNames } from './PlayerNames';
 import { AdministratorPlayerControls } from '../administration/PlayerControls';
 import { PlayerIdentity } from '../components/PlayerIdentity';
+import { moderationCategories } from './categories';
+import { PlayerInformation } from './PlayerInformation';
 
 function SanctionForm({
   player,
@@ -124,10 +126,11 @@ function SanctionForm({
         <label>
           Category
           <select name="category" defaultValue={original?.category ?? 'fair_play'}>
-            <option value="fair_play">Fair play</option>
-            <option value="sportsmanship">Sportsmanship</option>
-            <option value="integrity">Platform integrity</option>
-            <option value="other">Other</option>
+            {moderationCategories.map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
+            ))}
           </select>
         </label>
         {!['warning', 'closed'].includes(kind) && (
@@ -279,6 +282,7 @@ export function PlayerDetail({ id }: { id: string }) {
         )}
         <Feedback error={actionError} message={message} />
       </section>
+      <PlayerInformation player={data.player} />
       <AdministratorPlayerControls detail={data} saved={reload} />
       <section className="mod-card">
         <div className="mod-section-title">

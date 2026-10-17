@@ -253,3 +253,63 @@ def review_image(actor, pk, operation, reason=""):
         raise ValidationError({"detail": "Unknown image action."})
     audit(actor, "image_" + operation, ("image", image.pk), before, image_values(image), reason)
     return "success", image
+
+
+@transaction.atomic
+def delete_library_image(actor, pk, confirmation):
+    from django.core.cache import cache
+    from django.db.models import Q
+
+    from games.models import Round
+    from games.ranked import gate
+    from library.file_cleanup import drain_file_deletions
+    from library.models import ImportItem, PendingFileDeletion
+
+    gate()
+    actor = require_administrator(actor)
+    ImageSubmission.objects.filter(pk=pk).update(status=F("status"))
+    image = get_object_or_404(ImageSubmission.objects.select_related("category"), pk=pk)
+    if confirmation is not True:
+        raise ValidationError({"confirm": "Explicit deletion confirmation is required."})
+    if image.status != "rejected" and not image.retired_at:
+        raise ValidationError("Only rejected or retired images can be permanently deleted.")
+    name = image.image_file.name
+    references = Q(image=image)
+    if name:
+        references |= Q(image_storage_name=name)
+    rounds = Round.objects.filter(references)
+    if rounds.filter(
+        match__status="active", reveal_started_at__isnull=False, ended_at__isnull=True
+    ).exists():
+        raise ValidationError(
+            "This image is still being revealed in an active game. Retry after the round ends."
+        )
+    # Keep outcomes and required credit, without retaining image bytes or storage references.
+    Round.objects.filter(image=image).update(
+        image=None,
+        image_storage_name="",
+        image_metadata_snapshot={
+            "license": image.license,
+            "attribution": image.attribution,
+            "category": image.category.name,
+        },
+    )
+    if name:
+        Round.objects.filter(image_storage_name=name, image__isnull=True).update(
+            image_storage_name=""
+        )
+    ImportItem.objects.filter(image=image).delete()
+    image.delete()
+    audit(actor, "image_permanently_deleted", ("image", pk), {}, {"deleted": True})
+    if name:
+        job, _ = PendingFileDeletion.objects.get_or_create(name=name)
+        if job.completed_at:
+            job.completed_at = None
+            job.save(update_fields=["completed_at"])
+
+        def cleanup():
+            cache.delete("game-source:v1:" + name)
+            drain_file_deletions([job.pk])
+
+        transaction.on_commit(cleanup, robust=True)
+    return {"deleted": True, "id": str(pk)}

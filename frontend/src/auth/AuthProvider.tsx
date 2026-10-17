@@ -3,9 +3,11 @@ import type { ReactNode } from 'react';
 import { api } from '../api';
 import type { Session } from '../api';
 import { AuthContext } from './context';
+import { useNavigate } from 'react-router-dom';
 import { connectAccount } from './live';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session>({ user: null, restrictions: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -75,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     await api('/api/auth/logout/', { method: 'POST' });
     receive({ user: null, restrictions: null });
+    navigate('/', { replace: true });
   };
   return (
     <AuthContext.Provider value={{ ...session, loading, error, refresh, signOut }}>

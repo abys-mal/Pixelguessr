@@ -141,6 +141,7 @@ class StaffAppeal(serializers.ModelSerializer):
             "sanction",
             "kind",
             "explanation",
+            "closing_reason",
             "status",
             "created_at",
             "resolved_at",
@@ -150,7 +151,16 @@ class StaffAppeal(serializers.ModelSerializer):
 class PlayerAppeal(serializers.ModelSerializer):
     class Meta:
         model = Appeal
-        fields = ["id", "sanction", "kind", "explanation", "status", "created_at", "resolved_at"]
+        fields = [
+            "id",
+            "sanction",
+            "kind",
+            "explanation",
+            "closing_reason",
+            "status",
+            "created_at",
+            "resolved_at",
+        ]
 
 
 class PlayerNotice(serializers.ModelSerializer):
@@ -197,3 +207,36 @@ class StaffActivity(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = ["id", "actor", "action", "created_at", "sanction", "report", "appeal", "changes"]
+
+
+def player_information(user):
+    from .services import active_sanctions
+
+    active = list(active_sanctions(user))
+    statuses = []
+    if not user.is_active:
+        statuses.append("Inactive")
+    for sanction in active:
+        state = (
+            ("Voluntarily closed" if sanction.origin == "voluntary" else "Disciplinary closure")
+            if sanction.kind == "closed"
+            else Sanction.Kind(sanction.kind).label
+        )
+        if state not in statuses:
+            statuses.append(state)
+    role = (
+        "Administrator"
+        if user.is_staff and user.is_superuser
+        else "Protected staff"
+        if user.is_staff or user.is_superuser
+        else "Moderator"
+        if is_protected(user)
+        else "Player"
+    )
+    return {
+        "role": role,
+        "statuses": statuses or ["Active"],
+        "ranked_matches": user.ranked_matches,
+        "ranked_wins": user.ranked_wins,
+        "ranked_losses": user.ranked_losses,
+    }

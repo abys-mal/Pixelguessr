@@ -141,13 +141,13 @@ def submit_appeal(user, sanction_id, explanation):
     return appeal
 
 
-def review_appeal(actor, appeal_id, decision):
+def review_appeal(actor, appeal_id, decision, closing_reason=""):
     snapshot = get_object_or_404(Appeal, pk=appeal_id)
-    return _review_appeal_locked(actor, appeal_id, decision, snapshot.user_id)
+    return _review_appeal_locked(actor, appeal_id, decision, snapshot.user_id, closing_reason)
 
 
 @transaction.atomic
-def _review_appeal_locked(actor, appeal_id, decision, user_id):
+def _review_appeal_locked(actor, appeal_id, decision, user_id, closing_reason=""):
     target = lock_player(user_id)
     authorize(actor, target)
     appeal = Appeal.objects.select_related("sanction").get(pk=appeal_id)
@@ -157,9 +157,14 @@ def _review_appeal_locked(actor, appeal_id, decision, user_id):
         appeal.status = "sanction_changed"
     else:
         appeal.status = "upheld" if decision == "uphold" else "reversed"
+    if decision not in {"uphold", "reverse"}:
+        raise ValidationError({"decision": "Unknown appeal decision."})
+    if not isinstance(closing_reason, str) or len(closing_reason) > 2000:
+        raise ValidationError({"closing_reason": "Use at most 2000 characters."})
+    appeal.closing_reason = closing_reason.strip()
     appeal.resolved_at = timezone.now()
     appeal.resolved_by = actor
-    appeal.save(update_fields=["status", "resolved_at", "resolved_by"])
+    appeal.save(update_fields=["status", "resolved_at", "resolved_by", "closing_reason"])
     if appeal.status == "reversed":
         authorize(actor, target, closure=appeal.sanction.kind == "closed")
         _reverse(actor, appeal.sanction)
@@ -167,6 +172,7 @@ def _review_appeal_locked(actor, appeal_id, decision, user_id):
         user=target,
         actor=actor,
         action="appeal_" + appeal.status,
+        changes={"closing_reason": appeal.closing_reason},
         appeal=appeal,
         sanction=appeal.sanction,
     )
@@ -294,3 +300,40 @@ def change_names(actor, user_id, data):
     refresh_account_name(target)
     schedule(target.pk)
     return target
+
+
+@transaction.atomic
+def submit_report(actor, subject, category, details):
+    reporter = lock_player(actor.pk)
+    if account_restrictions(reporter)["blocked"]:
+        raise PermissionDenied("Sign in with an account that can access this feature.")
+    subject = get_object_or_404(User, pk=subject.pk)
+    if reporter.pk == subject.pk:
+        raise ValidationError({"subject": "You cannot report yourself."})
+    from .models import Category
+
+    if category not in Category.values or not details.strip() or len(details) > 2000:
+        raise ValidationError("A valid category and written reason are required.")
+    if Report.objects.filter(
+        reporter=reporter,
+        subject=subject,
+        category=category,
+        resolved_at__isnull=True,
+        created_at__gte=timezone.now() - timedelta(days=1),
+    ).exists():
+        raise ValidationError(
+            {
+                "detail": "You already submitted this category of report for this player in the last day."
+            }
+        )
+    report = Report.objects.create(
+        reporter=reporter, subject=subject, category=category, details=details.strip()
+    )
+    Activity.objects.create(
+        user=subject,
+        actor=reporter,
+        action="report_submitted",
+        report=report,
+        changes={"category": category},
+    )
+    return report

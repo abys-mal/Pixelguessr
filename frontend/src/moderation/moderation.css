@@ -789,3 +789,54 @@
     transition: none;
   }
 }
+
+.mod-player-information {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 28px;
+  margin: 20px 0 0;
+}
+.mod-player-information dt {
+  color: var(--mod-muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.mod-player-information dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.player-information-uuid {
+  grid-column: 1 / -1;
+}
+.player-information-uuid dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.player-information-uuid code {
+  user-select: all;
+}
+.mod-closing-reason {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.mod-preserve-lines {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.admin-delete-image {
+  color: #ffb0b3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+}
+@media (max-width: 600px) {
+  .mod-player-information {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

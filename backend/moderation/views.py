@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from .models import Sanction
 from .serializers import ReportSerializer, SanctionSerializer
 from .services import active_sanctions
-from .workspace import submit_appeal
+from .workspace import submit_appeal, submit_report
 from .workspace_serializers import PlayerAppeal, PlayerNotice
 
 
@@ -55,7 +55,7 @@ class ReportView(generics.CreateAPIView):
     throttle_scope = "report"
 
     def perform_create(self, serializer):
-        serializer.save(reporter=self.request.user)
+        serializer.instance = submit_report(self.request.user, **serializer.validated_data)
 
 
 class MySanctionsView(generics.ListAPIView):

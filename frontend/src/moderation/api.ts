@@ -16,6 +16,11 @@ export interface Player {
   moderator: boolean;
   can_remove_moderator?: boolean;
   deletion_eligible?: boolean;
+  role?: string;
+  statuses?: string[];
+  ranked_matches?: number;
+  ranked_wins?: number;
+  ranked_losses?: number;
 }
 export interface Sanction {
   state: string;
@@ -50,6 +55,7 @@ export interface Appeal {
   sanction: Sanction;
   kind: Kind;
   explanation: string;
+  closing_reason?: string;
   created_at: string;
   resolved_at: string | null;
   status: string;

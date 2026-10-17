@@ -217,3 +217,7 @@ No migrations or changes to existing data are required for these rules.
 For voluntary closure, verified permanent erasure, and CLI password reset, see
 [account lifecycle and data retention](account-lifecycle.md). Permanent erasure
 is a sensitive new tool and always requires a reason and password verification.
+
+
+See [moderation quality-of-life changes](moderation-qol.md) for the Player Information
+section, optional appeal closing reasons and permanent rejected/retired image deletion.

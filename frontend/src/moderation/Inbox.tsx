@@ -10,6 +10,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState('');
   const [decision, setDecision] = useState('');
+  const [closingReason, setClosingReason] = useState('');
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
@@ -29,8 +30,12 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
     setPending(true);
     setActionError('');
     try {
-      await post(`${root}${kind}/${item.id}/resolve/`, { decision: choice });
+      await post(`${root}${kind}/${item.id}/resolve/`, {
+        decision: choice,
+        ...(appeals ? { closing_reason: closingReason } : {}),
+      });
       setDecision('');
+      setClosingReason('');
       setMessage('Review saved.');
       reload();
     } catch (error) {
@@ -59,6 +64,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
               setFilter(value);
               setPage(1);
               setSelected('');
+              setClosingReason('');
               setMessage('');
             }}
           >
@@ -86,6 +92,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
                 key={row.id}
                 onClick={() => {
                   setSelected(row.id);
+                  setClosingReason('');
                   setActionError('');
                 }}
               >
@@ -131,6 +138,28 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
                       {expiry(item.sanction)}
                     </small>
                   </div>
+                )}
+                {'closing_reason' in item && item.closing_reason && (
+                  <div className="mod-original">
+                    <h3>Reason for closing</h3>
+                    <p className="mod-preserve-lines">{item.closing_reason}</p>
+                  </div>
+                )}
+                {appeals && !resolved && (
+                  <label className="mod-closing-reason">
+                    Reason for closing (optional)
+                    <textarea
+                      rows={3}
+                      maxLength={2000}
+                      value={closingReason}
+                      disabled={pending}
+                      onChange={(e) => setClosingReason(e.target.value)}
+                    />
+                    <small className="mod-muted">
+                      This explanation will be visible to the appealing player. Keep internal staff
+                      notes separate.
+                    </small>
+                  </label>
                 )}
                 {!resolved && (
                   <div className="mod-actions">

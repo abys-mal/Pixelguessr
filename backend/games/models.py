@@ -130,6 +130,7 @@ class Round(models.Model):
     answer_snapshot = models.CharField(max_length=120, blank=True, editable=False)
     synonyms_snapshot = models.JSONField(default=list, editable=False)
     image_storage_name = models.CharField(max_length=500, blank=True, editable=False)
+    image_metadata_snapshot = models.JSONField(default=dict, blank=True, editable=False)
     reveal_seed = models.UUIDField(default=uuid.uuid4, editable=False)
     reveal_started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)

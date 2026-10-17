@@ -26,6 +26,7 @@ from .workspace_serializers import (
     StaffAppeal,
     StaffReport,
     StaffSanction,
+    player_information,
     player_summary,
 )
 
@@ -84,6 +85,7 @@ class Player(WorkspaceView):
             {
                 "player": {
                     **player_summary(user),
+                    **player_information(user),
                     "deletion_eligible": is_administrator(request.user)
                     and deletion_eligible(request.user, user),
                 },
@@ -179,7 +181,10 @@ class AppealDecision(WorkspaceView):
         decision = serializers.ChoiceField(choices=["uphold", "reverse"]).run_validation(
             request.data.get("decision")
         )
-        return Response(StaffAppeal(review_appeal(request.user, pk, decision)).data)
+        closing_reason = serializers.CharField(max_length=2000, allow_blank=True).run_validation(
+            request.data.get("closing_reason", "")
+        )
+        return Response(StaffAppeal(review_appeal(request.user, pk, decision, closing_reason)).data)
 
 
 class ModeratorAccess(WorkspaceView):

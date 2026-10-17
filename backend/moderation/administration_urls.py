@@ -13,6 +13,7 @@ urlpatterns = [
     path("health/", views.Health.as_view()),
     path("images/", views.Images.as_view()),
     path("images/review/", views.ImageReview.as_view()),
+    path("images/<uuid:pk>/delete/", views.PermanentImageDeletion.as_view()),
     path("images/<uuid:pk>/", views.ImageDetail.as_view()),
     path("images/<uuid:pk>/preview/", views.ImagePreview.as_view()),
     path("imports/", views.Batches.as_view()),

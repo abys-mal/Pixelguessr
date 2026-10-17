@@ -13,6 +13,7 @@ export interface AccountAppeal {
   id: string;
   kind: string;
   explanation: string;
+  closing_reason?: string;
   status: string;
   created_at: string;
   resolved_at: string | null;

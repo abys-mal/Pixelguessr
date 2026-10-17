@@ -4,12 +4,14 @@ from .models import Report, Sanction
 
 
 class ReportSerializer(serializers.ModelSerializer):
-    details = serializers.CharField(max_length=2000, allow_blank=True, required=False, default="")
+    details = serializers.CharField(max_length=2000)
 
-    def validate(self, attrs):
-        if attrs.get("category") != "other" and not attrs.get("details", "").strip():
-            raise serializers.ValidationError({"details": "This field is required."})
-        return attrs
+    def to_internal_value(self, data):
+        from collections.abc import Mapping
+
+        if isinstance(data, Mapping) and set(data) - {"subject", "category", "details"}:
+            raise serializers.ValidationError({"detail": "Unexpected report fields."})
+        return super().to_internal_value(data)
 
     class Meta:
         model = Report

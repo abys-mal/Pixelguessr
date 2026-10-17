@@ -44,8 +44,8 @@ export function AdministratorPlayerControls({
             {label}
           </button>
         ))}
+        <DeleteAccount player={detail.player} />
       </div>
-      <DeleteAccount player={detail.player} />
       <Feedback message={message} />
       {operation && (
         <Dialog

@@ -398,3 +398,12 @@ class PermanentAccountDeletion(AdministratorView):
         return Response(
             delete_account(request.user, pk, validated(PermanentDeletionInput, request.data))
         )
+
+
+class PermanentImageDeletion(AdministratorView):
+    def post(self, request, pk):
+        from .administration import delete_library_image
+        from .administration_serializers import ImageDeletionInput
+
+        data = validated(ImageDeletionInput, request.data)
+        return Response(delete_library_image(request.user, pk, data["confirm"]))

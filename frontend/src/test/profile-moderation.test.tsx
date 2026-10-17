@@ -115,8 +115,8 @@ it('places sign out next to the username on the own profile and retains settings
     '/settings/account',
   );
   fireEvent.click(button);
-  await screen.findByRole('heading', { name: 'Make yourself at home' });
-  expect(screen.getAllByRole('link', { name: /Sign in/ })).toHaveLength(2);
+  await screen.findByRole('heading', { name: /A little less pixel/ });
+  expect(screen.getByRole('link', { name: 'Sign in' })).toBeInTheDocument();
   expect(vi.mocked(api).mock.calls).toContainEqual(['/api/auth/logout/', { method: 'POST' }]);
 });
 
@@ -163,7 +163,7 @@ it('disables duplicate logout while preserving history until the request complet
   );
   expect(screen.getByText('WIN')).toBeInTheDocument();
   finish();
-  await screen.findByRole('heading', { name: 'Make yourself at home' });
+  await screen.findByRole('heading', { name: /A little less pixel/ });
 });
 
 it('reports failed logout without pretending the account is signed out', async () => {

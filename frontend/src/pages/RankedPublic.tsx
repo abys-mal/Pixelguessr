@@ -1,4 +1,5 @@
 import { PlayerIdentity } from '../components/PlayerIdentity';
+import { ReportPlayer } from '../components/ReportPlayer';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Page, type User } from '../api';
@@ -182,6 +183,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
           <span className="profile-identity-name">
             <PlayerIdentity username={'@' + profile.username} title={profile.title} />
           </span>
+          {!own && <ReportPlayer key={profile.id} id={profile.id} username={profile.username} />}
           {own && (
             <button
               className="button compact secondary"

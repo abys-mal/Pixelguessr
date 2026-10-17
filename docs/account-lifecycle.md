@@ -5,7 +5,8 @@ still audited. This applies to the existing image, role, rating, title, reopenin
 announcement and sanction tools only. Moderator requirements and protected-account
 rules are unchanged. It is not an exemption for future administrative tools.
 Moderation category `other` is available alongside all existing categories, and
-its description is optional.
+sanction context remains optional. Public player reports require a written reason
+for every category; see [moderation quality-of-life changes](moderation-qol.md).
 
 ## Voluntary closure
 

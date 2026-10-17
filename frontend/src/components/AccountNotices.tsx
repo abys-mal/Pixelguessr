@@ -330,6 +330,12 @@ export function AccountNotices() {
                     <div className="notice-record-body">
                       <p className="notice-field-label">Your explanation</p>
                       <p className="notice-explanation">{item.explanation}</p>
+                      {item.closing_reason && (
+                        <>
+                          <p className="notice-field-label">Reason for closing</p>
+                          <p className="notice-explanation">{item.closing_reason}</p>
+                        </>
+                      )}
                       <dl className="notice-dates">
                         <div>
                           <dt>Submitted</dt>

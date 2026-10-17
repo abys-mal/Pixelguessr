@@ -59,20 +59,23 @@ def test_report_required_fields(client, user, staff, missing):
 
 def test_report_duplicate_policy_rate_limit_and_server_owned_fields(client, user, staff):
     client.force_authenticate(user)
-    for _ in range(10):
-        response = client.post(
-            BASE + "reports/",
-            report_body(
-                staff,
-                reporter=str(staff.pk),
-                resolved_at=timezone.now().isoformat(),
-                id=str(uuid.uuid4()),
-            ),
-            format="json",
-        )
-        assert response.status_code == 201
+    response = client.post(
+        BASE + "reports/",
+        report_body(
+            staff,
+            reporter=str(staff.pk),
+            resolved_at=timezone.now().isoformat(),
+            id=str(uuid.uuid4()),
+        ),
+        format="json",
+    )
+    assert response.status_code == 400
+    assert not Report.objects.exists()
+    assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == 201
+    for _ in range(8):
+        assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == 400
     assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == 429
-    assert Report.objects.count() == 10  # Existing policy permits separate reports up to the limit.
+    assert Report.objects.count() == 1
     assert not Report.objects.exclude(reporter=user).exists()
     assert not Report.objects.filter(resolved_at__isnull=False).exists()
     entry = Report.objects.first()

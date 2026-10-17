@@ -414,7 +414,7 @@ it('upholds an appeal alongside the original sanction and explanation', async ()
   await userEvent.click(uphold);
   await screen.findByText('Review saved.');
   expect(seen.find(([path]) => path.endsWith('/appeal-id/resolve/'))?.[1]?.body).toBe(
-    JSON.stringify({ decision: 'uphold' }),
+    JSON.stringify({ decision: 'uphold', closing_reason: '' }),
   );
 });
 

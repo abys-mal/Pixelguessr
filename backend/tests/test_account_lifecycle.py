@@ -348,9 +348,7 @@ def test_password_reset_command_hashes_validates_and_invalidates_sessions(user):
     assert user.check_password(PASSWORD)
 
 
-def test_other_report_context_is_optional_and_old_category_requirements_remain(
-    client, administrator, user
-):
+def test_report_reasons_are_required_for_other_and_existing_categories(client, administrator, user):
     client.force_authenticate(user)
     assert (
         client.post(
@@ -358,7 +356,7 @@ def test_other_report_context_is_optional_and_old_category_requirements_remain(
             {"subject": str(administrator.pk), "category": "other"},
             format="json",
         ).status_code
-        == 201
+        == 400
     )
     assert (
         client.post(

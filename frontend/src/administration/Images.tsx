@@ -5,6 +5,7 @@ import { type Category, type Page } from '../api';
 import { Dialog, Feedback, Heading, Loading, Pager } from '../moderation/components';
 import { useData } from '../moderation/useData';
 import { adminRoot, send, type LibraryImage } from './api';
+import { DeleteImage } from './DeleteImage';
 
 export function ImageEditor({
   image,
@@ -53,6 +54,13 @@ export function ImageEditor({
   return (
     <Dialog title="Image detail" close={close} pending={pending}>
       <div className="admin-image-editor">
+        <DeleteImage
+          image={current}
+          deleted={() => {
+            close();
+            saved();
+          }}
+        />
         <img
           className="admin-large-preview"
           src={current.preview_url}
@@ -271,6 +279,13 @@ export function ImageLibrary() {
                   </small>
                 </button>
                 <div className="mod-actions">
+                  <DeleteImage
+                    image={image}
+                    deleted={() => {
+                      setSelected((ids) => ids.filter((id) => id !== image.id));
+                      reload();
+                    }}
+                  />
                   <button className="mod-button subtle" onClick={() => setEditing(image)}>
                     Review image
                   </button>

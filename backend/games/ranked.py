@@ -700,8 +700,12 @@ def payload(match, user, now, *, snapshot=None):
         "guessed_ids": [str(s.participant_id) for s in states if s.ranked_guessed_at],
         "completion": {
             "answer": game_round.answer_snapshot,
-            "license": game_round.image.license if game_round.image else "",
-            "attribution": game_round.image.attribution if game_round.image else "",
+            "license": game_round.image.license
+            if game_round.image
+            else game_round.image_metadata_snapshot.get("license", ""),
+            "attribution": game_round.image.attribution
+            if game_round.image
+            else game_round.image_metadata_snapshot.get("attribution", ""),
         }
         if completed
         else None,

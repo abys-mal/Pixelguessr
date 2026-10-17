@@ -272,6 +272,7 @@ class Appeal(models.Model):
     sanction = models.ForeignKey(Sanction, on_delete=models.PROTECT, related_name="appeals")
     kind = models.CharField(max_length=12, choices=Sanction.Kind)
     explanation = models.TextField(max_length=4000)
+    closing_reason = models.TextField(max_length=2000, blank=True)
     status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
     created_at = models.DateTimeField(default=timezone.now)
     resolved_at = models.DateTimeField(null=True, blank=True)

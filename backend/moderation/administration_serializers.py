@@ -65,3 +65,7 @@ class PermanentDeletionInput(StrictInput):
     current_password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=128)
     reason = serializers.CharField(max_length=2000)
     confirmation = serializers.CharField(trim_whitespace=False, max_length=150)
+
+
+class ImageDeletionInput(StrictInput):
+    confirm = serializers.BooleanField()

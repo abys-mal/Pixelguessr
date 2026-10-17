@@ -2203,3 +2203,14 @@ main {
   font-size: 14px;
   justify-self: start;
 }
+
+.profile-report-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.profile-report-feedback {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
