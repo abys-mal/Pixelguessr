@@ -5,6 +5,7 @@ export const post = <T>(url: string, body: unknown = {}) =>
   api<T>(url, { method: 'POST', body: JSON.stringify(body) });
 export type Kind = 'warning' | 'probation' | 'suspension' | 'closed';
 export interface Player {
+  title?: string | null;
   id: string;
   username: string;
   display_name: string;

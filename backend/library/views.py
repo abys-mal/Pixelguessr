@@ -1,11 +1,12 @@
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import generics
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.permissions import AccountAccess, CanSubmitImages
+from moderation.permissions import AdministratorAccess
 
 from .models import Category, ImageSubmission
 from .serializers import CategorySerializer, PublicImageSerializer, SubmissionSerializer
@@ -22,7 +23,7 @@ class PublicCatalog(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = PublicImageSerializer
     queryset = ImageSubmission.objects.filter(
-        status=ImageSubmission.Status.APPROVED
+        status=ImageSubmission.Status.APPROVED, retired_at__isnull=True
     ).select_related("category")
 
 
@@ -44,7 +45,7 @@ class MySubmissions(generics.ListCreateAPIView):
 
 
 class PrivatePreview(APIView):
-    permission_classes = [IsAdminUser, AccountAccess]
+    permission_classes = [AdministratorAccess, AccountAccess]
 
     def get(self, request, pk):
         image = get_object_or_404(ImageSubmission, pk=pk)

@@ -1,3 +1,4 @@
+import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/context';
@@ -180,7 +181,7 @@ function Leaderboard({
               <td>{index + 1}</td>
               <th scope="row">
                 <span>
-                  {p.name}
+                  <PlayerIdentity username={p.name} title={p.title} />
                   {p.id === me ? ' (you)' : ''}
                 </span>
                 <small>
@@ -359,7 +360,7 @@ function Lobby({
                 aria-hidden="true"
               />
               <strong>
-                {member.name}
+                <PlayerIdentity username={member.name} title={member.title} />
                 {member.id === state.me_id ? ' (you)' : ''}
               </strong>
               {member.id === state.host_id && <span className="party-host">Host</span>}

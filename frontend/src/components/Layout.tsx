@@ -1,3 +1,4 @@
+import { PlayerIdentity } from './PlayerIdentity';
 import { useEffect, useRef } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/context';
@@ -36,7 +37,8 @@ export function Layout() {
         <div className="account-nav">
           {user ? (
             <Link className="button compact secondary" to="/profile">
-              {user.display_name || user.username} <span aria-hidden="true">↗</span>
+              <PlayerIdentity username={user.display_name || user.username} title={user.title} />{' '}
+              <span aria-hidden="true">↗</span>
             </Link>
           ) : (
             <Link className="button compact secondary" to="/login">

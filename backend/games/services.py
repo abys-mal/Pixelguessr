@@ -102,7 +102,11 @@ def score_for_reveal(count, total):
 
 
 def approved_images():
-    images = list(ImageSubmission.objects.filter(status="approved").exclude(image_file=""))
+    images = list(
+        ImageSubmission.objects.filter(status="approved", retired_at__isnull=True).exclude(
+            image_file=""
+        )
+    )
     if not images:
         raise GameError("No approved hosted images are available.", "library_empty", 503)
     return images

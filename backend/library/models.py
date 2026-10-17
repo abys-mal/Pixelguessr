@@ -67,6 +67,15 @@ class ImageSubmission(models.Model):
         max_length=64, unique=True, null=True, blank=True, editable=False
     )
     local_import_metadata = models.JSONField(default=dict, blank=True, editable=False)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    retired_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="images_retired",
+    )
+    review_reason = models.TextField(max_length=2000, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -99,3 +108,25 @@ class ImageSubmission(models.Model):
             from .local_import import validate_approval
 
             validate_approval(self)
+
+
+class ImportBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class ImportItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(ImportBatch, on_delete=models.PROTECT, related_name="items")
+    request_id = models.UUIDField(unique=True)
+    filename = models.CharField(max_length=255)
+    image = models.ForeignKey(ImageSubmission, null=True, blank=True, on_delete=models.PROTECT)
+    status = models.CharField(
+        max_length=16,
+        choices=[("uploaded", "Uploaded"), ("duplicate", "Duplicate"), ("failed", "Failed")],
+    )
+    error = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

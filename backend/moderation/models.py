@@ -256,7 +256,11 @@ class Appeal(models.Model):
 class Activity(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="moderation_activity"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="moderation_activity",
+        null=True,
+        blank=True,
     )
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="moderation_actions"
@@ -267,6 +271,21 @@ class Activity(models.Model):
     report = models.ForeignKey(Report, null=True, blank=True, on_delete=models.PROTECT)
     appeal = models.ForeignKey(Appeal, null=True, blank=True, on_delete=models.PROTECT)
     changes = models.JSONField(default=dict, blank=True)
+    target_type = models.CharField(max_length=32, blank=True)
+    target_id = models.CharField(max_length=64, blank=True)
+    reason = models.TextField(max_length=2000, blank=True)
 
     class Meta:
         ordering = ["-created_at", "id"]
+        indexes = [models.Index(fields=["action", "created_at"])]
+
+
+class StaffAnnouncement(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    title = models.CharField(max_length=160, blank=True)
+    body = models.TextField(max_length=5000, blank=True)
+    published = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    editor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField(default=0)

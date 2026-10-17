@@ -3,7 +3,8 @@
 Native moderation and player appeals are implemented at `/moderation` and
 `/account-notices`. See [native moderation setup, access and workflows](docs/native-moderation.md).
 See [current sanction effects and live enforcement](docs/moderation-enforcement.md).
-Only administrators (active superusers) can enter Django Admin; moderators use the
+See [Administrator Panel v1, API and launch instructions](docs/administrator-workspace.md).
+Only administrators (active users with both `is_staff` and `is_superuser`) can enter Django Admin; moderators use the
 native workspace with `moderation.access_workspace` permission.
 
 A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`; Django 5.2 LTS + DRF + Channels in `backend/`. Phase 4 runs locally with SQLite and in-memory services. PostgreSQL, Redis, and Docker configuration remain available for future use.
@@ -23,7 +24,7 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 - Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. All three modes open playable games. Ranked Duel requires a registered account.
 - Custom UUID user model from the first migration; password validation; registration, login, logout, profile reads, and display-name edits. Same-origin cookie sessions with CSRF protection, including anonymous login and registration.
 - Private curated image submissions by registered users: canonical answer, synonyms, category, source, license, attribution, external HTTPS references or validated uploads. Six initial categories are installed by migration. All submissions begin pending. Users can see only their own submissions.
-- Still JPEG/PNG/WebP validation (8 MB, 64–4096 px, 12 MP), re-encoding to WebP, stripped metadata, opaque UUID filenames, private local or S3-compatible storage, and an authenticated staff-only preview. The server never fetches a submitted URL.
+- Still JPEG/PNG/WebP validation (8 MB, 64–4096 px, 12 MP), re-encoding to WebP, stripped metadata, opaque UUID filenames, private local or S3-compatible storage, and an authenticated administrator-only preview. The server never fetches a submitted URL.
 - Django Admin review/approval/rejection, reports, sanctions, and staff-verified Pro/Master/Legend titles. Warning acknowledgment works in account settings. Warnings expire after 90 days. Probation blocks ranked entry and submissions. Suspension/closure invalidate existing sessions, including staff sessions. Only superusers can reverse closure through Admin.
 - Answer-safe public catalog metadata, mode rules API, liveness/readiness, database migrations, dependency locks, formatting/linting, regression tests, and CI with PostgreSQL and Redis.
 
@@ -37,7 +38,7 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 
 ## Start locally without Docker
 
-Prerequisites: Python 3.13, Node 22.12+ (Node 24 recommended). In PowerShell, from `C:/Users/actian/python code/Pixelguessr`:
+Prerequisites: Python 3.13, Node 22.12+ (Node 24 recommended). In PowerShell, from `C:/Users/actian/source/Pixelguessr`:
 
 ```powershell
 python scripts/setup_env.py --lite
@@ -76,7 +77,7 @@ The lightweight mode is explicitly development-only: `DEBUG=True`, `USE_SQLITE=T
 Run a fourth terminal for durable ranked deadlines (in addition to the existing party clock):
 
 ```powershell
-cd "C:/Users/actian/python code/Pixelguessr/backend"
+cd "C:/Users/actian/source/Pixelguessr/backend"
 ..\.venv\Scripts\python.exe manage.py ranked_clock
 ```
 

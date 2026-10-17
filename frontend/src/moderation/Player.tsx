@@ -15,6 +15,8 @@ import {
 import { Dialog, Feedback, Heading, Loading } from './components';
 import { useData } from './useData';
 import { PlayerNames } from './PlayerNames';
+import { AdministratorPlayerControls } from '../administration/PlayerControls';
+import { PlayerIdentity } from '../components/PlayerIdentity';
 
 function SanctionForm({
   player,
@@ -234,7 +236,9 @@ export function PlayerDetail({ id }: { id: string }) {
             {data.player.username.slice(0, 1).toUpperCase()}
           </div>
           <div>
-            <h2>@{data.player.username}</h2>
+            <h2>
+              <PlayerIdentity username={'@' + data.player.username} title={data.player.title} />
+            </h2>
             <p className="mod-muted">
               {data.player.display_name || 'Player'} · {data.player.rating} Elo
             </p>
@@ -269,6 +273,7 @@ export function PlayerDetail({ id }: { id: string }) {
         </div>
         <Feedback error={actionError} message={message} />
       </section>
+      <AdministratorPlayerControls detail={data} saved={reload} />
       <section className="mod-card">
         <div className="mod-section-title">
           <h2>Active sanctions</h2>

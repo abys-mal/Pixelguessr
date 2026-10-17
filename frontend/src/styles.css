@@ -2134,3 +2134,30 @@ main {
 .page-heading:has(.profile-identity) h1 {
   overflow-wrap: anywhere;
 }
+
+.player-identity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  overflow-wrap: anywhere;
+}
+.honorary-title {
+  display: inline-block;
+  background: #a6ead4;
+  color: #102b25;
+  border-radius: 3px;
+  font-size: 0.66em;
+  line-height: 1.3;
+  padding: 2px 4px;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  vertical-align: baseline;
+}
+.honorary-master {
+  background: #c6b6ff;
+  color: #281b46;
+}
+.honorary-legend {
+  background: #f1d080;
+  color: #382801;
+}

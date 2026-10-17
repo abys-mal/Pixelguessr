@@ -139,6 +139,11 @@ export function AccountNotices() {
       aria-label="Sanctions and appeals"
     >
       <AccountNoticeStatus activeCount={data ? active.length : undefined} />
+      {data?.updates?.map((update) => (
+        <p className="message" key={update.created_at}>
+          {update.message} · {noticeDate(update.created_at)}
+        </p>
+      ))}
       {error && (
         <div className="notice-feedback">
           <StatusMessage error>{error}</StatusMessage>

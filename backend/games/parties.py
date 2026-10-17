@@ -12,6 +12,8 @@ from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.exceptions import APIException, NotFound
 
+from accounts.identity import honorary_title
+
 from .models import (
     Guess,
     Match,
@@ -423,7 +425,11 @@ def start_party(request, code, request_id):
             return
         if party.status != Party.Status.LOBBY:
             raise GameError("Return to the lobby before starting another game.", "match_started")
-        members = list(party.members.filter(left_at__isnull=True).order_by("joined_at", "id"))
+        members = list(
+            party.members.filter(left_at__isnull=True)
+            .select_related("user__verified_title")
+            .order_by("joined_at", "id")
+        )
         if len(members) < 2:
             raise GameError("At least two players are needed to start.", "not_enough_players")
         images = approved_images()
@@ -682,7 +688,11 @@ def record_party_guess(party, member, round_id, text, request_id, now):
 
 
 def payload(party, member, now):
-    members = list(party.members.filter(left_at__isnull=True).order_by("joined_at", "id"))
+    members = list(
+        party.members.filter(left_at__isnull=True)
+        .select_related("user__verified_title")
+        .order_by("joined_at", "id")
+    )
     game_round = (
         current_round(party)
         if party.status in (Party.Status.PLAYING, Party.Status.COMPLETE)
@@ -701,6 +711,7 @@ def payload(party, member, now):
             {
                 "id": str(m.pk),
                 "name": m.display_name,
+                "title": honorary_title(m.user),
                 "connected": (now - m.last_seen).total_seconds() <= PRESENCE_SECONDS,
             }
             for m in members
@@ -725,7 +736,9 @@ def payload(party, member, now):
         return data
     count = game_round.grid_size**2 if game_round.ended_at else revealed_count(game_round, now)
     deadline = game_round.reveal_started_at + timedelta(seconds=game_round.reveal_duration_seconds)
-    states = list(game_round.player_states.select_related("participant__party_member"))
+    states = list(
+        game_round.player_states.select_related("participant__party_member__user__verified_title")
+    )
     me = next(s for s in states if s.participant.party_member_id == member.pk)
     rank = sorted(
         states,
@@ -761,6 +774,7 @@ def payload(party, member, now):
         {
             "id": str(item.pk),
             "name": item.display_name,
+            "title": honorary_title(item.user),
             "total_score": state.participant.total_score,
             "round_score": state.score,
             "solved": bool(state.solved_at),

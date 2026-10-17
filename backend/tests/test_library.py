@@ -118,6 +118,9 @@ def test_upload_reencoded_private_and_staff_preview(
     assert "image_file" not in response.json()
     assert client.get(f"/api/library/submissions/{image.pk}/preview/").status_code == 403
     client.force_authenticate(staff)
+    assert client.get(f"/api/library/submissions/{image.pk}/preview/").status_code == 403
+    staff.is_superuser = True
+    staff.save(update_fields=["is_superuser"])
     preview = client.get(f"/api/library/submissions/{image.pk}/preview/")
     assert preview.status_code == 200
     assert preview["Cache-Control"] == "private, no-store"

@@ -1,9 +1,10 @@
-from django.urls import path
+from django.urls import include, path
 
 from . import workspace_views as workspace
 from .views import AcknowledgeView, MyNotices, MySanctionsView, ReportView, SubmitAppeal
 
 urlpatterns = [
+    path("workspace/administration/", include("moderation.administration_urls")),
     path("notices/", MyNotices.as_view()),
     path("sanctions/<uuid:pk>/appeal/", SubmitAppeal.as_view()),
     path("workspace/", workspace.Overview.as_view()),

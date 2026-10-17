@@ -12,7 +12,13 @@ from .validators import validate_username_rules
 
 class UserSerializer(serializers.ModelSerializer):
     moderation_access = serializers.SerializerMethodField()
-    administrator = serializers.BooleanField(source="is_superuser", read_only=True)
+    administrator = serializers.SerializerMethodField()
+
+    def get_administrator(self, obj):
+        from moderation.permissions import is_administrator
+
+        return is_administrator(obj)
+
     title = serializers.SerializerMethodField()
     ranked_tier = serializers.SerializerMethodField()
 
@@ -44,8 +50,9 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_title(self, obj):
-        title = getattr(obj, "verified_title", None)
-        return title.title if title and not title.revoked_at else None
+        from .identity import honorary_title
+
+        return honorary_title(obj)
 
 
 class PublicProfileSerializer(UserSerializer):

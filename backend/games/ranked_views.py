@@ -111,6 +111,8 @@ class PublicRankedView(SingleplayerView):
 
 class LeaderboardView(PublicRankedView):
     def get(self, request):
+        from accounts.identity import honorary_title
+
         users = (
             User.objects.filter(is_active=True, ranked_matches__gte=1)
             .annotate(sort_name=Lower("username"))
@@ -124,6 +126,7 @@ class LeaderboardView(PublicRankedView):
                 {
                     "position": start + index,
                     "username": user.username,
+                    "title": honorary_title(user),
                     "rating": user.rating,
                     "tier": tier(user.rating),
                 }
@@ -148,6 +151,8 @@ class LeaderboardView(PublicRankedView):
 
 class HistoryView(PublicRankedView):
     def get(self, request, username):
+        from accounts.identity import honorary_title
+
         user = get_object_or_404(User, username=username, is_active=True)
         entries = (
             Participant.objects.filter(
@@ -157,7 +162,7 @@ class HistoryView(PublicRankedView):
                 rating_before__isnull=False,
             )
             .select_related("match")
-            .prefetch_related("match__participants__user")
+            .prefetch_related("match__participants__user__verified_title")
             .order_by("-match__completed_at", "-match_id")
         )
         pagination = PageNumberPagination()
@@ -170,6 +175,7 @@ class HistoryView(PublicRankedView):
                     "id": str(entry.match_id),
                     "date": entry.match.completed_at.isoformat(),
                     "opponent": opponent.user.username,
+                    "opponent_title": honorary_title(opponent.user),
                     "outcome": "no_contest"
                     if entry.match.ranked_outcome == "no_contest"
                     else "win"

@@ -1,3 +1,4 @@
+import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Page } from '../api';
@@ -56,7 +57,9 @@ export function ModerationPlayers() {
                   {player.username.slice(0, 1).toUpperCase()}
                 </span>
                 <span>
-                  <strong>@{player.username}</strong>
+                  <strong>
+                    <PlayerIdentity username={'@' + player.username} title={player.title} />
+                  </strong>
                   <small>
                     {player.display_name || 'Player'} · {player.rating} Elo
                   </small>

@@ -42,7 +42,10 @@ class SanctionInput(serializers.Serializer):
 
 
 def player_summary(user):
+    from accounts.identity import honorary_title
+
     return {
+        "title": honorary_title(user),
         "id": str(user.pk),
         "username": user.username,
         "display_name": user.display_name,

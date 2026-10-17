@@ -1,3 +1,4 @@
+import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Page, type User } from '../api';
@@ -86,7 +87,9 @@ export function Leaderboards() {
                   <tr key={p.username}>
                     <td>#{p.position}</td>
                     <td>
-                      <Link to={`/players/${encodeURIComponent(p.username)}`}>{p.username}</Link>
+                      <Link to={`/players/${encodeURIComponent(p.username)}`}>
+                        <PlayerIdentity username={p.username} title={p.title} />
+                      </Link>
                     </td>
                     <td>{p.rating}</td>
                     <td>{p.tier ? <Badge tone="violet">{p.tier}</Badge> : '—'}</td>
@@ -176,7 +179,9 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
     <>
       <PageHeading eyebrow="A PLACE IN THE GRID" title={profile.display_name || profile.username}>
         <span className="profile-identity">
-          <span className="profile-identity-name">@{profile.username}</span>
+          <span className="profile-identity-name">
+            <PlayerIdentity username={'@' + profile.username} title={profile.title} />
+          </span>
           {own && (
             <button
               className="button compact secondary"
@@ -197,7 +202,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
         <div>
           <h2>{profile.rating} Elo</h2>
           {profile.ranked_tier && <Badge tone="violet">{profile.ranked_tier}</Badge>}
-          {profile.title && <Badge tone="mint">{profile.title}</Badge>}
+
           <p>
             {profile.ranked_wins} wins · {profile.ranked_losses} losses · {profile.ranked_matches}{' '}
             rated matches
@@ -229,7 +234,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
                   <td>{new Date(entry.date).toLocaleDateString()}</td>
                   <td>
                     <Link to={`/players/${encodeURIComponent(entry.opponent)}`}>
-                      {entry.opponent}
+                      <PlayerIdentity username={entry.opponent} title={entry.opponent_title} />
                     </Link>
                   </td>
                   <td>

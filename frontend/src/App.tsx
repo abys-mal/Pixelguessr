@@ -17,11 +17,25 @@ import { ModerationHome } from './moderation/Home';
 import { ModerationPlayers } from './moderation/Players';
 import { ModerationPlayer } from './moderation/Player';
 import { ModerationInbox } from './moderation/Inbox';
+import { AdministratorGate, AdministrationOverview } from './administration/Overview';
+import { ImageLibrary } from './administration/Images';
+import { ImageImports } from './administration/Imports';
+import { StaffRoles } from './administration/Staff';
+import { AuditLog, SystemHealth } from './administration/Operations';
 
 export function App() {
   return (
     <Routes>
       <Route path="moderation" element={<ModerationLayout />}>
+        <Route path="administration" element={<AdministratorGate />}>
+          <Route index element={<AdministrationOverview />} />
+          <Route path="images" element={<ImageLibrary />} />
+          <Route path="imports" element={<ImageImports key="list" />} />
+          <Route path="imports/:id" element={<ImageImports key="detail" />} />
+          <Route path="staff" element={<StaffRoles />} />
+          <Route path="audit" element={<AuditLog />} />
+          <Route path="health" element={<SystemHealth />} />
+        </Route>
         <Route index element={<ModerationHome />} />
         <Route path="players" element={<ModerationPlayers />} />
         <Route path="players/:id" element={<ModerationPlayer />} />

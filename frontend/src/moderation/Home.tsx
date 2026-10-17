@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { root, type Overview } from './api';
 import { Heading, Loading } from './components';
 import { useData } from './useData';
+import { StaffAnnouncement } from '../administration/Announcement';
 
 export function ModerationHome() {
   const { data, error, reload } = useData<Overview>(root);
@@ -28,11 +29,7 @@ export function ModerationHome() {
           </small>
         </Link>
       </div>
-      <section className="mod-card mod-announcements">
-        <p className="mod-eyebrow">STAFF UPDATES</p>
-        <h2>Announcements</h2>
-        <p className="mod-muted">No announcements at the moment.</p>
-      </section>
+      <StaffAnnouncement />
       <section className="mod-home-note">
         <h2>Start with a player.</h2>
         <p>

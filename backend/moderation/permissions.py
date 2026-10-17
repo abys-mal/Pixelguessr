@@ -1,7 +1,13 @@
 from rest_framework.permissions import BasePermission
 
 
+def is_administrator(user):
+    return bool(user.is_authenticated and user.is_active and user.is_staff and user.is_superuser)
+
+
 def is_moderator(user):
+    if getattr(user, "is_superuser", False):
+        return is_administrator(user)
     return bool(
         user.is_authenticated and user.is_active and user.has_perm("moderation.access_workspace")
     )
@@ -29,3 +35,10 @@ class WorkspaceAccess(BasePermission):
         from .services import account_restrictions
 
         return is_moderator(request.user) and not account_restrictions(request.user)["blocked"]
+
+
+class AdministratorAccess(WorkspaceAccess):
+    message = "Administrator access is required."
+
+    def has_permission(self, request, view):
+        return is_administrator(request.user) and super().has_permission(request, view)

@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from accounts.models import User
 
 from .models import Appeal, Report, Sanction
-from .permissions import WorkspaceAccess
+from .permissions import WorkspaceAccess, is_administrator
 from .workspace import (
     change_access,
     change_names,
@@ -31,7 +31,7 @@ from .workspace_serializers import (
 
 
 def visible_players(request):
-    return User.objects.all() if request.user.is_superuser else ordinary_players()
+    return User.objects.all() if is_administrator(request.user) else ordinary_players()
 
 
 def paginate(request, queryset, serializer):
@@ -57,7 +57,7 @@ class Overview(WorkspaceView):
                 "pending_appeals": Appeal.objects.filter(
                     user__in=players, status="pending"
                 ).count(),
-                "administrator": request.user.is_superuser,
+                "administrator": is_administrator(request.user),
             }
         )
 

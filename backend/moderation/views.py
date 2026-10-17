@@ -26,6 +26,15 @@ class MyNotices(APIView):
                     request.user.sanctions.order_by("-starts_at"), many=True
                 ).data,
                 "appeals": PlayerAppeal(request.user.appeals.all(), many=True).data,
+                "updates": [
+                    {
+                        "message": "Your account has been reopened. Other active sanctions still apply.",
+                        "created_at": row.created_at,
+                    }
+                    for row in request.user.moderation_activity.filter(
+                        action="admin_reopen"
+                    ).order_by("-created_at")[:10]
+                ],
             }
         )
 

@@ -1,3 +1,4 @@
+import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/context';
@@ -122,9 +123,7 @@ function RankedQueue() {
         </div>
         <p className="eyebrow">YOUR RATING</p>
         <h2>{queue?.rating ?? user?.rating} Elo</h2>
-        {(queue?.tier ?? user?.ranked_tier) && (
-          <Badge tone="violet">{queue?.tier ?? user?.ranked_tier}</Badge>
-        )}
+
         {ticket ? (
           <>
             <h3>Finding your opponent…</h3>
@@ -241,11 +240,10 @@ function RankedGame({ id }: { id: string }) {
       <div className="panel duel-scoreboard">
         {state.players.map((p) => (
           <div key={p.id} className="duel-player">
-            <Link to={`/players/${encodeURIComponent(p.username)}`}>{p.username}</Link>
-            <span className="muted">
-              {complete ? p.rating_after : p.rating_before} Elo{' '}
-              {p.tier && <Badge tone="violet">{p.tier}</Badge>}
-            </span>
+            <Link to={`/players/${encodeURIComponent(p.username)}`}>
+              <PlayerIdentity username={p.username} title={p.title} />
+            </Link>
+            <span className="muted">{complete ? p.rating_after : p.rating_before} Elo </span>
             <strong aria-label={`${p.username} wins`}>{p.wins}</strong>
           </div>
         ))}
@@ -266,7 +264,9 @@ function RankedGame({ id }: { id: string }) {
           <div className="duel-ratings">
             {state.players.map((p) => (
               <div key={p.id}>
-                <h2>{p.username}</h2>
+                <h2>
+                  <PlayerIdentity username={p.username} title={p.title} />
+                </h2>
                 <p>
                   {p.rating_before} → <strong>{p.rating_after}</strong> Elo
                 </p>
@@ -274,7 +274,6 @@ function RankedGame({ id }: { id: string }) {
                   {p.rating_delta! > 0 ? '+' : ''}
                   {p.rating_delta} Elo
                 </Badge>
-                {p.tier && <Badge tone="violet">{p.tier}</Badge>}
               </div>
             ))}
           </div>

@@ -1,3 +1,4 @@
+import { PlayerIdentity } from '../components/PlayerIdentity';
 import { useEffect, useRef } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/context';
@@ -64,9 +65,26 @@ export function ModerationLayout() {
             </NavLink>
           ))}
         </nav>
+        {user.administrator && (
+          <nav aria-label="Administration navigation">
+            <p className="admin-nav-label">Administration</p>
+            {[
+              ['', 'Overview'],
+              ['/images', 'Image Library'],
+              ['/imports', 'Image Imports'],
+              ['/staff', 'Staff & Roles'],
+              ['/audit', 'Audit Log'],
+              ['/health', 'System Health'],
+            ].map(([path, title]) => (
+              <NavLink key={title} to={'/moderation/administration' + path} end={!path}>
+                {title}
+              </NavLink>
+            ))}
+          </nav>
+        )}
         <div className="mod-sidebar-footer">
           <p>
-            @{user.username}
+            <PlayerIdentity username={'@' + user.username} title={user.title} />
             <small>{data.administrator ? 'Administrator' : 'Moderator'}</small>
           </p>
           {data.administrator && <a href="/admin/">Django Admin ↗</a>}

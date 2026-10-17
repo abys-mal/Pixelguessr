@@ -12,7 +12,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.models import User
 
 from .models import Activity, Appeal, Report, Sanction
-from .permissions import is_moderator, is_protected
+from .permissions import is_administrator, is_moderator, is_protected
 from .services import account_restrictions, active_sanctions
 
 
@@ -28,7 +28,7 @@ def authorize(actor, target, *, closure=False):
     actor = User.objects.get(pk=actor.pk)  # No stale permission cache from the request.
     if not is_moderator(actor) or account_restrictions(actor)["blocked"]:
         raise PermissionDenied("Moderator access is required.")
-    if not actor.is_superuser and (is_protected(target) or closure):
+    if not is_administrator(actor) and (is_protected(target) or closure):
         raise PermissionDenied("This action requires an administrator.")
 
 
@@ -193,16 +193,20 @@ def change_access(actor, user_id, enabled):
     from django.contrib.auth.models import Group, Permission
 
     target = lock_player(user_id)
+    actor = User.objects.get(pk=actor.pk)
     authorize(actor, target)
-    if not actor.is_superuser:
+    if not is_administrator(actor):
         raise PermissionDenied("Only administrators can manage moderator access.")
     if target.is_superuser or target.is_staff:
         raise ValidationError(
-            {"detail": "Manage administrator and legacy staff roles through Django Admin."}
+            {"detail": "Administrator and legacy staff roles are command-line-only."}
         )
     permission = Permission.objects.get(
         content_type__app_label="moderation", codename="access_workspace"
     )
+    before = is_protected(target)
+    if before == enabled:
+        return
     if enabled:
         target.user_permissions.add(permission)
     else:
@@ -210,7 +214,16 @@ def change_access(actor, user_id, enabled):
         # Remove only groups that confer this permission, retaining all other groups.
         target.groups.remove(*Group.objects.filter(permissions=permission))
     Activity.objects.create(
-        user=target, actor=actor, action="moderator_access_changed", changes={"enabled": enabled}
+        user=target,
+        actor=actor,
+        action="moderator_access_changed",
+        target_type="player",
+        target_id=str(target.pk),
+        changes={
+            "enabled": enabled,
+            "before": {"moderator": before},
+            "after": {"moderator": enabled},
+        },
     )
 
 

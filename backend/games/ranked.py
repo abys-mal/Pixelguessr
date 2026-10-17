@@ -15,6 +15,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 
+from accounts.identity import honorary_title
 from accounts.models import User
 from moderation.models import Sanction
 from moderation.services import account_restrictions
@@ -73,7 +74,9 @@ def owned(user, match_id):
 
 
 def participants(match):
-    return list(match.participants.select_related("user").order_by("joined_at", "id"))
+    return list(
+        match.participants.select_related("user__verified_title").order_by("joined_at", "id")
+    )
 
 
 def current_round(match):
@@ -282,7 +285,7 @@ def matchmake(now):
     RankedQueue.objects.filter(queued_at__isnull=False, last_seen__lt=cutoff).update(queued_at=None)
     entries = list(
         RankedQueue.objects.filter(queued_at__isnull=False)
-        .select_related("user")
+        .select_related("user__verified_title")
         .order_by("queued_at", "user_id")
     )
     available = []
@@ -647,6 +650,7 @@ def payload(match, user, now, *, snapshot=None):
             {
                 "id": str(p.pk),
                 "username": p.user.username,
+                "title": honorary_title(p.user),
                 "rating_before": p.rating_before,
                 "rating_after": p.rating_after,
                 "rating_delta": p.rating_delta,

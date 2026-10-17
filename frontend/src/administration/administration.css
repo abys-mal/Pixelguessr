@@ -1,0 +1,252 @@
+.mod-sidebar {
+  gap: 24px;
+  overflow-y: auto;
+}
+.admin-nav-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--mod-muted);
+  margin: 0 14px 4px;
+}
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 14px;
+}
+.admin-metrics .mod-card {
+  display: grid;
+  gap: 10px;
+}
+.admin-metrics strong {
+  font-size: 32px;
+  color: var(--mod-accent);
+}
+.admin-columns {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+.admin-attention {
+  display: grid;
+  gap: 15px;
+  margin: 20px 0;
+}
+.admin-health {
+  list-style: none;
+  padding: 0;
+}
+.admin-health li {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--mod-line);
+}
+.admin-health strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.health-healthy {
+  color: #a6ead4;
+}
+.health-unavailable,
+.health-degraded {
+  color: #ffb0b3;
+}
+.health-not-configured {
+  color: #a8b1c2;
+}
+.admin-filters {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0;
+}
+.admin-filters label {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+  min-width: 155px;
+  font-size: 13px;
+}
+.admin-filters input,
+.admin-filters select {
+  width: 100%;
+}
+.admin-toolbar {
+  margin: 24px 0;
+}
+.admin-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 20px;
+}
+.admin-image-card {
+  background: var(--mod-panel);
+  border: 1px solid var(--mod-line);
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 14px;
+}
+.admin-image-select {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.admin-image-select input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--mod-accent);
+}
+.admin-image-open {
+  display: grid;
+  gap: 12px;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
+}
+.admin-image-open img {
+  width: 100%;
+  height: 170px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: #11141b;
+}
+.admin-image-open small {
+  color: var(--mod-muted);
+  margin-bottom: 12px;
+}
+.admin-large-preview {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  background: #11141b;
+  border-radius: 8px;
+  margin: 12px 0;
+}
+.admin-image-editor {
+  display: grid;
+  gap: 20px;
+}
+.admin-image-editor section label {
+  display: grid;
+  gap: 10px;
+}
+.admin-image-editor input[type='range'] {
+  width: 100%;
+  accent-color: #a6ead4;
+}
+.mod-dialog:has(.admin-image-editor) {
+  width: min(780px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  border-radius: 14px 0 0 14px;
+}
+.admin-details {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 10px;
+}
+.admin-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mod-shell pre,
+.mod-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  max-height: 240px;
+  overflow: auto;
+  background: #11141b;
+  padding: 12px;
+  border-radius: 8px;
+}
+.admin-batch-list,
+.admin-staff-list {
+  display: grid;
+  gap: 16px;
+}
+.admin-staff-list {
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+.admin-upload {
+  border-style: dashed;
+}
+.admin-upload input[type='file'] {
+  margin: 12px 0;
+  max-width: 100%;
+}
+.admin-search-results {
+  list-style: none;
+  padding: 0;
+}
+.admin-search-results li {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--mod-line);
+}
+.admin-search-results small {
+  display: block;
+  color: var(--mod-muted);
+  margin-top: 6px;
+}
+.admin-announcement-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 850px) {
+  .admin-columns {
+    grid-template-columns: 1fr;
+  }
+  .mod-sidebar {
+    gap: 16px;
+  }
+  .admin-image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .admin-search-results li {
+    flex-direction: column;
+  }
+  .admin-filters {
+    align-items: stretch;
+  }
+  .admin-filters > * {
+    width: 100%;
+  }
+  .admin-health li {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .admin-staff-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .mod-sidebar nav[aria-label='Administration navigation'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-nav-label {
+    grid-column: 1 / -1;
+  }
+  .mod-dialog:has(.admin-image-editor) {
+    border-radius: 0;
+  }
+}

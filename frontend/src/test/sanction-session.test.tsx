@@ -116,6 +116,7 @@ it.each(['probation', 'suspension'] as const)(
   async (kind) => {
     page('/account-notices');
     await screen.findByRole('heading', { name: 'Account notices', level: 1 });
+    await waitFor(() => expect(receive).toBeTypeOf('function'));
     act(() => receive(notice(kind)));
     expect(screen.getByRole('heading', { name: 'Account notices', level: 1 })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /^Active sanctions/ })).toBeInTheDocument();
@@ -126,6 +127,7 @@ it.each(['probation', 'suspension'] as const)(
 it('replaces signed-in access with a clear closure message from a live event', async () => {
   page();
   await screen.findByRole('link', { name: /^player/ });
+  await waitFor(() => expect(receive).toBeTypeOf('function'));
   act(() =>
     receive({
       user: null,
@@ -156,6 +158,7 @@ it('ignores an old HTTP refresh when a newer account event has arrived', async (
     </MemoryRouter>,
   );
   await screen.findByText('Signed in: player');
+  await waitFor(() => expect(receive).toBeTypeOf('function'));
   fireEvent(window, new Event('focus'));
   await waitFor(() => expect(finish).toBeTypeOf('function'));
   act(() => receive(notice('suspension')));

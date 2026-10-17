@@ -18,6 +18,7 @@ export interface AccountAppeal {
   resolved_at: string | null;
 }
 export interface AccountNoticesData {
+  updates?: { message: string; created_at: string }[];
   sanctions: AccountSanction[];
   appeals: AccountAppeal[];
 }

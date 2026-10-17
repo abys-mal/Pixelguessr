@@ -1,6 +1,7 @@
 import { api, ApiError } from '../api';
 
 export interface PartyMember {
+  title?: string | null;
   id: string;
   name: string;
   connected: boolean;

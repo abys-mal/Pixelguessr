@@ -217,7 +217,17 @@ def import_image(row, path, owner, *, cleanup_error):
             data={**data, "image_file": File(source, name=path.name)}
         )
         serializer.is_valid(raise_exception=True)
-    converted = serializer.converted
+    return register_image(
+        row,
+        serializer.validated_data,
+        meta,
+        serializer.converted,
+        owner,
+        cleanup_error=cleanup_error,
+    )
+
+
+def register_image(row, values, meta, converted, owner, *, cleanup_error):
     row["content_sha256"] = converted.digest
     storage = ImageSubmission._meta.get_field("image_file").storage
     stored = proposed = None
@@ -236,7 +246,7 @@ def import_image(row, path, owner, *, cleanup_error):
                 if image.local_import_metadata["original_filename"] != row["original_filename"]:
                     return "duplicate", image, converted
                 meta["stored_sha256"] = image.local_import_metadata["stored_sha256"]
-                values = {k: v for k, v in serializer.validated_data.items() if k != "image_file"}
+                values = {k: v for k, v in values.items() if k != "image_file"}
                 changes = [key for key, value in values.items() if getattr(image, key) != value]
                 for key in changes:
                     setattr(image, key, values[key])
@@ -248,7 +258,7 @@ def import_image(row, path, owner, *, cleanup_error):
                     image.save(update_fields=changes)
                 return "updated_pending" if changes else "duplicate", image, converted
             image = ImageSubmission(
-                **{k: v for k, v in serializer.validated_data.items() if k != "image_file"},
+                **{k: v for k, v in values.items() if k != "image_file"},
                 submitted_by=owner,
                 local_import_digest=converted.digest,
                 local_import_metadata=meta,
