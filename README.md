@@ -18,6 +18,7 @@ A playable curated image-guessing game. React + TypeScript + Vite in `frontend/`
 - Server-authoritative round state and reveal timing, durable session recovery, idempotent starts/submissions, 24-hour game expiry, private masked WebP frames, and explicit empty/loading/reconnect/error states. Raw originals and unrevealed answers/order never reach the client.
 - Forfeit becomes available only after full reveal and awards zero points. Round results show the answer, outcome, points, and total; Next Round waits for the player. Round 5 opens Final Results with all scores/outcomes, solved count, Play Again, and Return Home.
 - Four original CC0 illustrations, imported pending and explicitly reviewed only with `seed_dev_images --approve`. See [development image attribution](docs/development-images.md).
+- Local JPG/JPEG imports use private WebP storage, an editable CSV manifest, content deduplication and explicit staff approval. See [local photograph import and verification](docs/local-image-imports.md).
 
 - Responsive, dark-first homepage with Ranked Duel, Singleplayer, and Parties cards, mode rules, navigation, and accessible mobile layouts. All three modes open playable games. Ranked Duel requires a registered account.
 - Custom UUID user model from the first migration; password validation; registration, login, logout, profile reads, and display-name edits. Same-origin cookie sessions with CSRF protection, including anonymous login and registration.

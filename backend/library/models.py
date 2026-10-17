@@ -62,6 +62,11 @@ class ImageSubmission(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Private import provenance; never accepted or emitted by the public serializers.
+    local_import_digest = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False
+    )
+    local_import_metadata = models.JSONField(default=dict, blank=True, editable=False)
 
     class Meta:
         ordering = ["-created_at"]
@@ -90,3 +95,7 @@ class ImageSubmission(models.Model):
             raise ValidationError("Reviewed submissions require a reviewer and timestamp.")
         if self.reviewed_by_id and not self.reviewed_by.is_staff:
             raise ValidationError({"reviewed_by": "Approval requires staff authorization."})
+        if self.local_import_digest and self.status == self.Status.APPROVED:
+            from .local_import import validate_approval
+
+            validate_approval(self)

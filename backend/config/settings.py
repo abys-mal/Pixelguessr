@@ -121,6 +121,9 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # Private uploads are deliberately NOT exposed by any URL route.
 MEDIA_ROOT = BASE_DIR / "private-media"
+PEXELS_PROTOTYPE_METADATA = env.bool("PEXELS_PROTOTYPE_METADATA", default=False)
+if PEXELS_PROTOTYPE_METADATA and not DEBUG:
+    raise ImproperlyConfigured("Pexels prototype metadata requires DEBUG=True.")
 STORAGES = {
     "default": {
         "BACKEND": env(

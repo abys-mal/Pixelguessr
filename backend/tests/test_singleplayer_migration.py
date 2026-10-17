@@ -14,6 +14,7 @@ def test_legacy_games_are_preserved_by_additive_migration():
     previous = [
         ("games", "0002_guess_request_id_round_answer_snapshot_and_more"),
         ("accounts", "0001_initial"),
+        ("library", "0003_allow_empty_synonyms"),
     ]
     try:
         executor.migrate(previous)
@@ -94,5 +95,7 @@ def test_legacy_games_are_preserved_by_additive_migration():
             apps.get_model("library", "ImageSubmission").objects.get(pk=image.pk).status
             == "approved"
         )
+        imported = apps.get_model("library", "ImageSubmission").objects.get(pk=image.pk)
+        assert imported.local_import_digest is None and imported.local_import_metadata == {}
     finally:
         MigrationExecutor(connection).migrate(latest)
