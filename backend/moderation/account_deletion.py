@@ -140,7 +140,15 @@ def delete_account(actor, user_id, data):
         }
         image.submitted_by = None
         image.review_reason = redact(image.review_reason, identities)
-        image.save(update_fields=["submitted_by", "local_import_metadata", "review_reason"])
+        image.player_review_explanation = ""
+        image.save(
+            update_fields=[
+                "submitted_by",
+                "local_import_metadata",
+                "review_reason",
+                "player_review_explanation",
+            ]
+        )
         ImportItem.objects.filter(image=image).update(filename="Anonymized submission")
     files = list(
         ImageSubmission.objects.filter(pk__in=removed_ids)

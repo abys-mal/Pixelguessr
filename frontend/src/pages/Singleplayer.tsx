@@ -277,7 +277,7 @@ export function Singleplayer() {
                     {game.busy ? 'Starting…' : game.empty ? 'Check Again' : 'Start Game'}
                   </button>
                   {game.empty && (
-                    <Link className="back-link" to="/submit">
+                    <Link className="back-link" to="/contributions">
                       Contribute an image
                     </Link>
                   )}

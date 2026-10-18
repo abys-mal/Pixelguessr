@@ -71,6 +71,11 @@ export function Settings() {
       </div>
       {error && <StatusMessage error>{error}</StatusMessage>}
       {message && <StatusMessage>{message}</StatusMessage>}
+      <p>
+        <Link className="button secondary" to="/contributions">
+          Image Contributions ↗
+        </Link>
+      </p>
       <footer className="account-settings-footer">
         <Link className="account-close-link" to="/settings/close-account">
           <UserRoundXIcon />

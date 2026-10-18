@@ -2,7 +2,7 @@
 
 from django.core.exceptions import ValidationError as ModelValidationError
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -168,17 +168,33 @@ def image_values(image):
         "retired": bool(image.retired_at),
         "review_reason": image.review_reason,
         "label_verified": image.local_import_metadata.get("label_verified", False),
+        "license": image.license,
+        "attribution": image.attribution,
+        "source": image.source,
+        "source_url": image.source_url,
     }
 
 
+def library_images():
+    """Library management includes player contributions only after approval."""
+    return ImageSubmission.objects.filter(Q(player_contribution=False) | Q(status="approved"))
+
+
 @transaction.atomic
-def edit_image(actor, pk, data):
+def edit_image(actor, pk, data, *, library_only=False):
     ImageSubmission.objects.filter(pk=pk).update(status=F("status"))
     actor = require_administrator(actor)
-    image = get_object_or_404(ImageSubmission, pk=pk)
+    image = get_object_or_404(library_images() if library_only else ImageSubmission, pk=pk)
     before = image_values(image)
     for key, value in data.items():
         setattr(image, key, value)
+    from urllib.parse import urlsplit
+
+    url = urlsplit(image.source_url)
+    if image.source_url and (url.scheme != "https" or url.username or url.password):
+        raise ValidationError({"source_url": "Use an HTTPS URL without credentials."})
+    if image.source in {"commons", "licensed"} and not image.source_url:
+        raise ValidationError({"source_url": "This source requires a provenance URL."})
     if image.local_import_digest:
         image.local_import_metadata = {**image.local_import_metadata, "label_verified": True}
     try:
@@ -195,13 +211,13 @@ def edit_image(actor, pk, data):
 
 
 @transaction.atomic
-def review_image(actor, pk, operation, reason=""):
+def review_image(actor, pk, operation, reason="", *, library_only=False):
     from games.ranked import gate
 
     gate()
     ImageSubmission.objects.filter(pk=pk).update(status=F("status"))
     actor = require_administrator(actor)
-    image = get_object_or_404(ImageSubmission, pk=pk)
+    image = get_object_or_404(library_images() if library_only else ImageSubmission, pk=pk)
     before = image_values(image)
     if operation in {"approve", "reject"}:
         if operation == "reject" and not is_administrator(actor) and not reason.strip():
@@ -229,7 +245,8 @@ def review_image(actor, pk, operation, reason=""):
             raise ValidationError(exc.messages) from exc
         image.refresh_from_db()
         image.review_reason = reason.strip()
-        image.save(update_fields=["review_reason"])
+        image.player_review_explanation = ""
+        image.save(update_fields=["review_reason", "player_review_explanation"])
     elif operation in {"retire", "restore"}:
         if image.status != "approved":
             raise ValidationError({"detail": "Only approved images can be retired or restored."})
@@ -256,14 +273,14 @@ def review_image(actor, pk, operation, reason=""):
 
 
 @transaction.atomic
-def delete_library_image(actor, pk, confirmation):
+def delete_library_image(actor, pk, confirmation, *, pending_contribution=False):
     from django.core.cache import cache
     from django.db.models import Q
 
     from games.models import Round
     from games.ranked import gate
     from library.file_cleanup import drain_file_deletions
-    from library.models import ImportItem, PendingFileDeletion
+    from library.models import ImportItem, PendingFileDeletion, RemovedContribution
 
     gate()
     actor = require_administrator(actor)
@@ -271,7 +288,11 @@ def delete_library_image(actor, pk, confirmation):
     image = get_object_or_404(ImageSubmission.objects.select_related("category"), pk=pk)
     if confirmation is not True:
         raise ValidationError({"confirm": "Explicit deletion confirmation is required."})
-    if image.status != "rejected" and not image.retired_at:
+    if (
+        image.status != "rejected"
+        and not image.retired_at
+        and not (pending_contribution and image.player_contribution and image.status == "pending")
+    ):
         raise ValidationError("Only rejected or retired images can be permanently deleted.")
     name = image.image_file.name
     references = Q(image=image)
@@ -284,6 +305,7 @@ def delete_library_image(actor, pk, confirmation):
         raise ValidationError(
             "This image is still being revealed in an active game. Retry after the round ends."
         )
+    affected_rounds = list(Round.objects.filter(image=image).values_list("pk", flat=True))
     # Keep outcomes and required credit, without retaining image bytes or storage references.
     Round.objects.filter(image=image).update(
         image=None,
@@ -297,6 +319,24 @@ def delete_library_image(actor, pk, confirmation):
     if name:
         Round.objects.filter(image_storage_name=name, image__isnull=True).update(
             image_storage_name=""
+        )
+    if image.player_contribution:
+        RemovedContribution.objects.get_or_create(
+            pk=image.pk,
+            defaults={"submitted_by_id": image.submitted_by_id, "created_at": image.created_at},
+        )
+        # Removed player content must not survive in old answers, guesses or review snapshots.
+        from games.models import Guess
+
+        from .models import Activity
+
+        # Round links have detached above; match by the retained affected IDs.
+        Round.objects.filter(pk__in=affected_rounds).update(
+            answer_snapshot="Removed image", synonyms_snapshot=[], image_metadata_snapshot={}
+        )
+        Guess.objects.filter(round_id__in=affected_rounds).update(text="[Removed image]")
+        Activity.objects.filter(target_type="image", target_id=str(image.pk)).update(
+            changes={"content_removed": True}, reason=""
         )
     ImportItem.objects.filter(image=image).delete()
     image.delete()
@@ -313,3 +353,42 @@ def delete_library_image(actor, pk, confirmation):
 
         transaction.on_commit(cleanup, robust=True)
     return {"deleted": True, "id": str(pk)}
+
+
+@transaction.atomic
+def review_contribution(actor, pk, data):
+    from games.ranked import gate
+    from library.models import RemovedContribution
+
+    gate()
+    actor = require_administrator(actor)
+    if data["operation"] == "remove" and RemovedContribution.objects.filter(pk=pk).exists():
+        if data.get("confirm") is not True:
+            raise ValidationError("Explicit removal confirmation is required.")
+        return {"id": str(pk), "status": "removed"}
+    ImageSubmission.objects.filter(pk=pk).update(status=F("status"))
+    image = get_object_or_404(ImageSubmission, pk=pk, player_contribution=True)
+    if image.status != "pending":
+        raise ValidationError(
+            "This contribution has already been reviewed. Approved images can be managed in the "
+            "Image Library; rejected contributions can be permanently removed from their history."
+        )
+    if data["operation"] == "remove":
+        delete_library_image(actor, pk, data.get("confirm"), pending_contribution=True)
+        return {"id": str(pk), "status": "removed"}
+    if data["operation"] == "approve" or data.get("corrections"):
+        edit_image(actor, pk, data.get("corrections", {}))
+    _, image = review_image(actor, pk, data["operation"], data.get("explanation", ""))
+    image.player_review_explanation = (
+        data.get("explanation", "") if data.get("visible_to_player") else ""
+    )
+    image.save(update_fields=["player_review_explanation"])
+    # Record whether the staff explanation was explicitly made public.
+    audit(
+        actor,
+        "contribution_reviewed",
+        ("image", pk),
+        {},
+        {"status": image.status, "player_visible_explanation": image.player_review_explanation},
+    )
+    return {"id": str(pk), "status": image.status}

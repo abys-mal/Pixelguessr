@@ -4,7 +4,13 @@ import { ActionIcon } from '../components/ActionIcon';
 import { Dialog, Feedback } from '../moderation/components';
 import { send, type LibraryImage } from './api';
 
-export function DeleteImage({ image, deleted }: { image: LibraryImage; deleted: () => void }) {
+export function DeleteImage({
+  image,
+  deleted,
+}: {
+  image: Pick<LibraryImage, 'id' | 'canonical_answer' | 'status'>;
+  deleted: () => void;
+}) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -31,7 +37,8 @@ export function DeleteImage({ image, deleted }: { image: LibraryImage; deleted: 
           </p>
           <p>
             This irreversibly removes the library record and its private image file. Historical
-            matches, answers and scores remain. A file shared by another image is retained.
+            matches and scores remain. Removed player image content is redacted and a generic
+            contribution receipt remains. A file shared by another image is retained.
           </p>
           <Feedback error={error} />
           <div className="mod-actions">

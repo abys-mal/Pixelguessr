@@ -11,6 +11,8 @@ urlpatterns = [
     path("announcement/", views.Announcement.as_view()),
     path("audit/", views.AuditLog.as_view()),
     path("health/", views.Health.as_view()),
+    path("player-submissions/", views.PlayerSubmissions.as_view()),
+    path("player-submissions/<uuid:pk>/review/", views.PlayerSubmissionReview.as_view()),
     path("images/", views.Images.as_view()),
     path("images/review/", views.ImageReview.as_view()),
     path("images/<uuid:pk>/delete/", views.PermanentImageDeletion.as_view()),

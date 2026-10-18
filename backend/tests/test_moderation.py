@@ -18,16 +18,22 @@ def sanction(user, staff, kind, **kwargs):
     )
 
 
-def test_warning_acknowledgment_and_expiry(client, user, staff, submission_data):
+def test_warning_acknowledgment_and_expiry(client, user, staff, uploaded_submission):
     warning = sanction(user, staff, "warning")
     assert warning.expires_at == warning.starts_at + timedelta(days=90)
     client.force_authenticate(user)
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 201
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
+        == 201
     )
     assert client.post(f"/api/moderation/sanctions/{warning.pk}/acknowledge/").status_code == 200
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 201
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
+        == 201
     )
     warning.starts_at = timezone.now() - timedelta(days=91)
     warning.save()
@@ -41,7 +47,7 @@ def test_cannot_acknowledge_another_users_warning(client, user, staff):
     assert client.post(f"/api/moderation/sanctions/{warning.pk}/acknowledge/").status_code == 404
 
 
-def test_probation_blocks_submissions_until_expiry(client, user, staff, submission_data):
+def test_probation_blocks_submissions_until_expiry(client, user, staff, uploaded_submission):
     probation = sanction(
         user,
         staff,
@@ -51,12 +57,18 @@ def test_probation_blocks_submissions_until_expiry(client, user, staff, submissi
     )
     client.force_authenticate(user)
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 403
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
+        == 403
     )
     probation.expires_at = timezone.now() - timedelta(days=1)
     probation.save()
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 201
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
+        == 201
     )
 
 

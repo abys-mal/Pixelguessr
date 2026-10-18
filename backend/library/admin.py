@@ -26,6 +26,15 @@ class ImageSubmissionAdmin(admin.ModelAdmin):
     )
     actions = ["approve", "reject"]
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def delete_model(self, request, obj):
+        raise PermissionDenied("Use the Image Library or Player Submissions removal workflow.")
+
+    def delete_queryset(self, request, queryset):
+        raise PermissionDenied("Use the Image Library or Player Submissions removal workflow.")
+
     @admin.display(description="Private image preview")
     def private_preview(self, obj):
         if not obj.image_file:

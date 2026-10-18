@@ -9,7 +9,12 @@ from accounts.permissions import AccountAccess, CanSubmitImages
 from moderation.permissions import AdministratorAccess
 
 from .models import Category, ImageSubmission
-from .serializers import CategorySerializer, PublicImageSerializer, SubmissionSerializer
+from .serializers import (
+    CategorySerializer,
+    ContributionInput,
+    PublicImageSerializer,
+    SubmissionSerializer,
+)
 
 
 class CategoryList(generics.ListAPIView):
@@ -40,8 +45,13 @@ class MySubmissions(generics.ListCreateAPIView):
     def get_queryset(self):
         return ImageSubmission.objects.filter(submitted_by=self.request.user)
 
+    def get_serializer_class(self):
+        return ContributionInput if self.request.method == "POST" else SubmissionSerializer
+
     def perform_create(self, serializer):
-        serializer.save(submitted_by=self.request.user)
+        from .contributions import create_contribution
+
+        serializer.instance = create_contribution(self.request.user, serializer.validated_data)
 
 
 class PrivatePreview(APIView):

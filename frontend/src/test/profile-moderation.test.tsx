@@ -43,6 +43,15 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (path) => {
       if (path === '/api/auth/me/') return current;
+      if (path.startsWith('/api/library/contributions/?'))
+        return {
+          count: 0,
+          next: null,
+          previous: null,
+          results: [],
+          stats: { total: 0, pending: 0, approved: 0 },
+        };
+      if (path === '/api/library/categories/') return [];
       if (path.startsWith('/api/auth/profiles/'))
         return { ...user, username: path.includes('/other/') ? 'other' : user.username };
       if (path.startsWith('/api/ranked/history/'))

@@ -327,3 +327,39 @@
     border-radius: 0;
   }
 }
+
+.mod-filter a {
+  padding: 10px 14px;
+  border: 1px solid var(--mod-line);
+  border-radius: 7px;
+  color: var(--mod-muted);
+}
+.mod-filter a.selected {
+  background: #a6ead412;
+  color: var(--mod-accent);
+  border-color: #a6ead466;
+}
+.admin-contribution-list {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 0;
+}
+.admin-contribution-list .contribution-row {
+  background: var(--mod-panel);
+  border-color: var(--mod-line);
+}
+.admin-contribution-review {
+  display: grid;
+  gap: 16px;
+}
+.admin-contribution-review .admin-review-visibility {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.admin-review-visibility input {
+  width: 18px !important;
+}

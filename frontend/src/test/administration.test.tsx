@@ -88,6 +88,7 @@ beforeEach(() => {
           active_games: 2,
           playable_images: 12,
           pending_images: 3,
+          pending_player_submissions: 2,
           incomplete_imports: 1,
           recent_activity: [],
           health: [{ name: 'Database', state: 'Healthy' }],
@@ -371,4 +372,25 @@ it('uses consistent approved wording while explaining the overview image count',
   expect(screen.getByRole('heading', { name: 'Needs Attention' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Recent staff activity' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'System status' })).toBeInTheDocument();
+  expect(within(summary).getByText('Pending player review')).toBeInTheDocument();
+  expect(within(summary).getByText('Pending import review')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: '2 pending player reviews →' })).toHaveAttribute(
+    'href',
+    '/moderation/administration/images?tab=submissions',
+  );
+  expect(screen.getByRole('link', { name: '3 pending import reviews →' })).toHaveAttribute(
+    'href',
+    '/moderation/administration/images?status=pending',
+  );
+});
+
+it('labels pending library entries as import review and preserves the API filter value', async () => {
+  show('/moderation/administration/images');
+  await screen.findByRole('checkbox', { name: 'Select rose' });
+  expect(screen.getByText('Pending import review', { selector: 'span' })).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText('Status'), 'pending');
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+  expect(
+    calls.some(([path]) => path.startsWith(root + 'images/?') && path.includes('status=pending')),
+  ).toBe(true);
 });

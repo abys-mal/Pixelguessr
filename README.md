@@ -6,6 +6,7 @@ See [current sanction effects and live enforcement](docs/moderation-enforcement.
 See [Administrator Panel v1, API and launch instructions](docs/administrator-workspace.md).
 See [account closure, permanent deletion and CLI password reset](docs/account-lifecycle.md).
 See [public reports, appeal decisions and image deletion](docs/moderation-qol.md).
+See [Image Contributions and single-stage player-submission review](docs/contributions.md).
 Only administrators (active users with both `is_staff` and `is_superuser`) can enter Django Admin; moderators use the
 native workspace with `moderation.access_workspace` permission.
 

@@ -2,7 +2,7 @@ from collections.abc import Mapping
 
 from rest_framework import serializers
 
-from library.models import Category, validate_synonyms
+from library.models import Category, ImageSubmission, validate_synonyms
 
 
 class StrictInput(serializers.Serializer):
@@ -49,6 +49,20 @@ class ImageEdit(StrictInput):
     canonical_answer = serializers.CharField(max_length=120)
     accepted_synonyms = serializers.JSONField(validators=[validate_synonyms])
     category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
+    license = serializers.CharField(max_length=160, required=False)
+    attribution = serializers.CharField(max_length=500, required=False)
+    source = serializers.ChoiceField(choices=ImageSubmission.Source, required=False)
+    source_url = serializers.URLField(max_length=1000, required=False, allow_blank=True)
+
+
+class ContributionReview(StrictInput):
+    operation = serializers.ChoiceField(choices=["approve", "reject", "remove"])
+    corrections = ImageEdit(required=False)
+    explanation = serializers.CharField(
+        max_length=2000, allow_blank=True, required=False, default=""
+    )
+    visible_to_player = serializers.BooleanField(default=False)
+    confirm = serializers.BooleanField(default=False)
 
 
 class ImageAction(StrictInput):

@@ -10,16 +10,21 @@ from library.models import ImageSubmission
 pytestmark = pytest.mark.django_db
 
 
-def test_submission_requires_account_and_is_pending(client, user, submission_data):
+def test_submission_requires_account_and_is_pending(client, user, uploaded_submission):
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code == 403
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
+        == 403
     )
     client.force_authenticate(user)
     response = client.post(
         "/api/library/submissions/",
-        {**submission_data, "status": "approved", "submitted_by": "fake"},
-        format="json",
+        {**uploaded_submission(), "status": "approved", "submitted_by": "fake"},
+        format="multipart",
     )
+    assert response.status_code == 400
+    response = client.post("/api/library/submissions/", uploaded_submission(), format="multipart")
     assert response.status_code == 201
     image = ImageSubmission.objects.get()
     assert image.status == "pending" and image.submitted_by == user
@@ -88,8 +93,8 @@ def test_invalid_upload_rejected(client, user, submission_data, settings, tmp_pa
     settings.MEDIA_ROOT = tmp_path
     client.force_authenticate(user)
     data = {
-        **submission_data,
-        "external_image_url": "",
+        **{k: v for k, v in submission_data.items() if k != "external_image_url"},
+        "rights_acknowledged": "true",
         "accepted_synonyms": "[]",
         "image_file": SimpleUploadedFile("answer.png", b"not an image", content_type="image/png"),
     }
@@ -104,8 +109,8 @@ def test_upload_reencoded_private_and_staff_preview(
     Image.new("RGB", (128, 128), "red").save(buffer, format="PNG")
     client.force_authenticate(user)
     data = {
-        **submission_data,
-        "external_image_url": "",
+        **{k: v for k, v in submission_data.items() if k != "external_image_url"},
+        "rights_acknowledged": "true",
         "accepted_synonyms": "[]",
         "image_file": SimpleUploadedFile(
             "red-panda-answer.png", buffer.getvalue(), content_type="image/png"

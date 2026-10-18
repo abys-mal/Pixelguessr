@@ -221,3 +221,7 @@ is a sensitive new tool and always requires a reason and password verification.
 
 See [moderation quality-of-life changes](moderation-qol.md) for the Player Information
 section, optional appeal closing reasons and permanent rejected/retired image deletion.
+
+
+See [Image Contributions](contributions.md) for the Player Submissions inbox,
+single-stage review, explicit public feedback and content-free Removed receipts.

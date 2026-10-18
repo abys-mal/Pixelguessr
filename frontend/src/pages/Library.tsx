@@ -49,7 +49,7 @@ export function Library() {
         </>
       )}
       <div className="action-row">
-        <Link className="button" to="/submit">
+        <Link className="button" to="/contributions">
           Submit an image ↗
         </Link>
         <p className="muted">Every submission needs staff approval.</p>

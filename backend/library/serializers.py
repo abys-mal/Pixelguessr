@@ -65,3 +65,27 @@ class SubmissionSerializer(serializers.ModelSerializer):
 
     def validate_image_file(self, upload):
         return convert_image(upload).file
+
+
+class ContributionInput(SubmissionSerializer):
+    image_file = serializers.FileField(write_only=True, required=True)
+    rights_acknowledged = serializers.BooleanField(write_only=True)
+
+    class Meta(SubmissionSerializer.Meta):
+        fields = [
+            field for field in SubmissionSerializer.Meta.fields if field != "external_image_url"
+        ] + ["rights_acknowledged"]
+
+    def to_internal_value(self, data):
+        if set(data) - set(self.fields) or set(data) & {"id", "status", "created_at"}:
+            raise serializers.ValidationError({"detail": "Unexpected contribution fields."})
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if attrs.get("rights_acknowledged") is not True:
+            raise serializers.ValidationError(
+                {
+                    "rights_acknowledged": "Confirm that you have permission to submit this image for use in the game."
+                }
+            )
+        return super().validate(attrs)

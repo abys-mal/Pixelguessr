@@ -81,6 +81,9 @@ class ImageSubmission(models.Model):
         related_name="images_retired",
     )
     review_reason = models.TextField(max_length=2000, blank=True)
+    player_contribution = models.BooleanField(default=False, editable=False, db_index=True)
+    rights_acknowledged_at = models.DateTimeField(null=True, blank=True, editable=False)
+    player_review_explanation = models.TextField(max_length=2000, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -164,3 +167,14 @@ class PendingFileDeletion(models.Model):
     attempts = models.PositiveIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
     last_error = models.CharField(max_length=160, blank=True)
+
+
+class RemovedContribution(models.Model):
+    """Content-free receipt; identity and original time only. Account erasure cascades."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
+    created_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at", "id"]

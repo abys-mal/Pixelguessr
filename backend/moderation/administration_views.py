@@ -20,6 +20,7 @@ from .administration import (
     announcement_payload,
     audit,
     edit_image,
+    library_images,
     manage_player,
     require_administrator,
     review_image,
@@ -105,12 +106,16 @@ class Overview(AdministratorView):
                 "active_games": Match.objects.filter(status="active")
                 .exclude(mode="singleplayer", singleplayer_expires_at__lte=now)
                 .count(),
-                "playable_images": ImageSubmission.objects.filter(
-                    status="approved", retired_at__isnull=True
-                )
+                "playable_images": library_images()
+                .filter(status="approved", retired_at__isnull=True)
                 .exclude(image_file="")
                 .count(),
-                "pending_images": ImageSubmission.objects.filter(status="pending").count(),
+                "pending_images": library_images()
+                .filter(status="pending", retired_at__isnull=True)
+                .count(),
+                "pending_player_submissions": ImageSubmission.objects.filter(
+                    player_contribution=True, status="pending"
+                ).count(),
                 "incomplete_imports": ImportItem.objects.filter(
                     Q(status="failed") | Q(image__status="pending")
                 ).count(),
@@ -237,7 +242,7 @@ class Health(AdministratorView):
 
 class Images(AdministratorView):
     def get(self, request):
-        rows = ImageSubmission.objects.select_related("category").order_by("-created_at", "id")
+        rows = library_images().select_related("category").order_by("-created_at", "id")
         q = request.query_params.get("q", "").strip()[:150]
         if q:
             condition = (
@@ -261,14 +266,14 @@ class Images(AdministratorView):
 class ImageDetail(AdministratorView):
     def get(self, request, pk):
         return Response(
-            image_payload(
-                get_object_or_404(ImageSubmission.objects.select_related("category"), pk=pk)
-            )
+            image_payload(get_object_or_404(library_images().select_related("category"), pk=pk))
         )
 
     def post(self, request, pk):
         return Response(
-            image_payload(edit_image(request.user, pk, validated(ImageEdit, request.data)))
+            image_payload(
+                edit_image(request.user, pk, validated(ImageEdit, request.data), library_only=True)
+            )
         )
 
 
@@ -278,7 +283,9 @@ class ImageReview(AdministratorView):
         results = []
         for pk in dict.fromkeys(data["ids"]):
             try:
-                state, _ = review_image(request.user, pk, data["operation"], data["reason"])
+                state, _ = review_image(
+                    request.user, pk, data["operation"], data["reason"], library_only=True
+                )
                 results.append({"id": str(pk), "status": state})
             except Exception as exc:
                 from django.http import Http404
@@ -407,3 +414,47 @@ class PermanentImageDeletion(AdministratorView):
 
         data = validated(ImageDeletionInput, request.data)
         return Response(delete_library_image(request.user, pk, data["confirm"]))
+
+
+class PlayerSubmissions(AdministratorView):
+    def get(self, request):
+        from library.contributions import history_item, history_rows
+        from library.models import RemovedContribution
+
+        images = ImageSubmission.objects.filter(player_contribution=True)
+        receipts = RemovedContribution.objects.all()
+        status = serializers.ChoiceField(
+            choices=["all", "pending", "approved", "rejected", "removed"]
+        ).run_validation(request.query_params.get("status", "pending"))
+        q = request.query_params.get("q", "").strip()[:150]
+        if q:
+            identities = Q(submitted_by__username__icontains=q)
+            import uuid
+
+            try:
+                uid = uuid.UUID(q)
+                identities |= Q(submitted_by_id=uid) | Q(pk=uid)
+            except ValueError:
+                pass
+            images = images.filter(identities | Q(canonical_answer__icontains=q))
+            receipts = receipts.filter(identities)
+        if status == "removed":
+            images = images.none()
+        elif status != "all":
+            images = images.filter(status=status)
+            receipts = receipts.none()
+        return page(
+            request,
+            history_rows(images, receipts, prioritize=True),
+            lambda row: history_item(row["id"], request.user, staff=True),
+        )
+
+
+class PlayerSubmissionReview(AdministratorView):
+    def post(self, request, pk):
+        from .administration import review_contribution
+        from .administration_serializers import ContributionReview
+
+        return Response(
+            review_contribution(request.user, pk, validated(ContributionReview, request.data))
+        )

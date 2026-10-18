@@ -12,6 +12,7 @@ import { Profile, Settings } from './pages/Account';
 import { Notices } from './pages/Notices';
 import { Library } from './pages/Library';
 import { Submit } from './pages/Submit';
+import { Contributions } from './pages/Contributions';
 import { About, NotFound } from './pages/Info';
 import { ModerationLayout } from './moderation/Layout';
 import { ModerationHome } from './moderation/Home';
@@ -63,6 +64,7 @@ export function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="account-notices" element={<Notices />} />
         <Route path="library" element={<Library />} />
+        <Route path="contributions" element={<Contributions />} />
         <Route path="submit" element={<Submit />} />
         <Route path="leaderboards" element={<Leaderboards />} />
         <Route path="about" element={<About />} />

@@ -270,9 +270,11 @@ def test_image_review_actions_record_admin_history(client, user, staff, category
     }
     if synonyms is not None:
         body["accepted_synonyms"] = synonyms
-    response = client.post("/api/library/submissions/", body, format="json")
-    assert response.status_code == 201
-    image = ImageSubmission.objects.get(pk=response.json()["id"])
+    from library.serializers import SubmissionSerializer
+
+    serializer = SubmissionSerializer(data=body)
+    serializer.is_valid(raise_exception=True)
+    image = serializer.save(submitted_by=user)
     assert image.accepted_synonyms == [] and image.status == "pending"
     model_admin = admin.site._registry[ImageSubmission]
     for action, expected in [(model_admin.approve, "approved"), (model_admin.reject, "rejected")]:

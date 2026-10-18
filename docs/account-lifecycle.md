@@ -114,3 +114,8 @@ removal, administrator promotion or password change occurs during migrations.
 Regression tests use isolated SQLite databases and temporary media. Manually review
 the closure steps and deletion dialog on desktop/mobile with synthetic accounts;
 never test erasure against real player accounts or media.
+
+
+Player contribution removal receipts are deleted with their owner during permanent
+account erasure. Preserved approved player images retain anonymous origin and legal
+credit; their public review feedback is cleared. See [contributions](contributions.md).

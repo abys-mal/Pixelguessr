@@ -51,7 +51,7 @@ def issue(user, staff, kind, **kwargs):
     ],
 )
 def test_authoritative_activity_matrix(
-    client, user, staff, images, submission_data, kind, login, solo, party, duel, upload
+    client, user, staff, images, uploaded_submission, kind, login, solo, party, duel, upload
 ):
     client.force_login(user)
     cookie = client.cookies["sessionid"].value
@@ -68,7 +68,9 @@ def test_authoritative_activity_matrix(
         == duel
     )
     assert (
-        client.post("/api/library/submissions/", submission_data, format="json").status_code
+        client.post(
+            "/api/library/submissions/", uploaded_submission(), format="multipart"
+        ).status_code
         == upload
     )
     assert client.get("/api/auth/settings/").status_code == (403 if kind == "closed" else 200)

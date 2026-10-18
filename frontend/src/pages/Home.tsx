@@ -113,7 +113,7 @@ export function Home() {
             Curated images. Thoughtful answers. Every submission reviewed before it joins the game.
           </p>
         </div>
-        <Link className="button secondary" to="/submit">
+        <Link className="button secondary" to="/contributions">
           Contribute an image <span aria-hidden="true">↗</span>
         </Link>
       </section>

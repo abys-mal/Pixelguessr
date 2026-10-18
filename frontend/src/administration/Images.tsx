@@ -6,6 +6,7 @@ import { Dialog, Feedback, Heading, Loading, Pager } from '../moderation/compone
 import { useData } from '../moderation/useData';
 import { adminRoot, send, type LibraryImage } from './api';
 import { DeleteImage } from './DeleteImage';
+import { PlayerSubmissions, ImageLibraryTabs } from './PlayerSubmissions';
 
 export function ImageEditor({
   image,
@@ -66,7 +67,9 @@ export function ImageEditor({
           src={current.preview_url}
           alt={`Private preview: ${current.canonical_answer}`}
         />
-        <span className={`mod-chip ${current.status}`}>{current.status}</span>
+        <span className={`mod-chip ${current.status}`}>
+          {current.status === 'pending' ? 'Pending import review' : current.status}
+        </span>
         <form className="mod-form" onSubmit={(e) => void save(e)}>
           <label>
             Canonical answer
@@ -150,6 +153,10 @@ export function ImageEditor({
 }
 
 export function ImageLibrary() {
+  const [params] = useSearchParams();
+  return params.get('tab') === 'submissions' ? <PlayerSubmissions /> : <GeneralImageLibrary />;
+}
+function GeneralImageLibrary() {
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const status = params.get('status') ?? '';
@@ -191,6 +198,7 @@ export function ImageLibrary() {
         title="Image Library"
         detail="Review the pictures. Keep every answer worth guessing."
       />
+      <ImageLibraryTabs />
       <form
         className="admin-filters"
         onSubmit={(e) => {
@@ -209,7 +217,9 @@ export function ImageLibrary() {
           <select name="status" defaultValue={status}>
             <option value="">All images</option>
             {['pending', 'approved', 'rejected', 'retired'].map((s) => (
-              <option key={s}>{s}</option>
+              <option key={s} value={s}>
+                {s === 'pending' ? 'Pending import review' : s}
+              </option>
             ))}
           </select>
         </label>
@@ -269,7 +279,9 @@ export function ImageLibrary() {
                       )
                     }
                   />
-                  <span className={`mod-chip ${image.status}`}>{image.status}</span>
+                  <span className={`mod-chip ${image.status}`}>
+                    {image.status === 'pending' ? 'Pending import review' : image.status}
+                  </span>
                 </label>
                 <button className="admin-image-open" onClick={() => setEditing(image)}>
                   <img loading="lazy" src={image.preview_url} alt={image.canonical_answer} />

@@ -21,6 +21,7 @@ export interface AdminOverview {
   active_games: number;
   playable_images: number;
   pending_images: number;
+  pending_player_submissions: number;
   incomplete_imports: number;
   recent_activity: AuditEntry[];
   health: HealthCheck[];

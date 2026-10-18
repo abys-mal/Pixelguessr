@@ -50,3 +50,35 @@ def submission_data(category):
         "license": "CC BY-SA 4.0",
         "attribution": "Example photographer",
     }
+
+
+@pytest.fixture(autouse=True)
+def isolated_private_media(settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "private-media"
+
+
+@pytest.fixture
+def uploaded_submission(submission_data):
+    def make(**changes):
+        import json
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        stream = BytesIO()
+        Image.new("RGB", (100, 100), "blue").save(stream, format="PNG")
+        values = {
+            key: value for key, value in submission_data.items() if key != "external_image_url"
+        }
+        values["accepted_synonyms"] = json.dumps(values.get("accepted_synonyms", []))
+        return {
+            **values,
+            "image_file": SimpleUploadedFile(
+                "secret-answer.png", stream.getvalue(), content_type="image/png"
+            ),
+            "rights_acknowledged": "true",
+            **changes,
+        }
+
+    return make

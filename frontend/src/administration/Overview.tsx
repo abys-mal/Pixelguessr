@@ -66,7 +66,8 @@ export function AdministrationOverview() {
             ['Registered players', data.players],
             ['Active games', data.active_games],
             ['Approved images', data.playable_images],
-            ['Pending reviews', data.pending_images],
+            ['Pending player review', data.pending_player_submissions],
+            ['Pending import review', data.pending_images],
             ['Incomplete imports', data.incomplete_imports],
           ].map(([name, count]) => (
             <section className="mod-card" key={name}>
@@ -83,7 +84,10 @@ export function AdministrationOverview() {
         <h2>Needs Attention</h2>
         <div className="admin-attention">
           <Link to="/moderation/administration/images?status=pending">
-            {data.pending_images} pending image reviews →
+            {data.pending_images} pending import reviews →
+          </Link>
+          <Link to="/moderation/administration/images?tab=submissions">
+            {data.pending_player_submissions} pending player reviews →
           </Link>
           <Link to="/moderation/administration/imports">
             {data.incomplete_imports} incomplete or failed imports →
