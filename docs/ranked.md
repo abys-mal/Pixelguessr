@@ -14,6 +14,21 @@ Before completion, participants receive only server-confirmed revealed tile indi
 
 ## Matchmaking
 
+The lobby keeps the existing Elo emblem, concise reveal/guess/win rules and separate
+standings/menu navigation. Competitive SVG icons appear only beside profile Elo and
+with tier names in standings/the ranked journey. Unknown tiers have no invented icon;
+Pro, Master and Legend remain honorary titles rather than competitive tiers.
+
+Participant snapshots add `round.incorrect_guess_ids`, derived from recorded guess
+timestamps without a solved timestamp. This contains participant IDs only and never
+guess text. During an active round, the client derives a muted inline opponent
+incorrect-guess status directly from this field beneath the guess controls. It stays
+visible until the round ends and reconstructs on refresh or reconnection from the
+current snapshot, without timers or notification history. A missing field on an
+older server produces no inferred status.
+Correct guesses retain normal results. This addition changes no guessing or scoring
+rules and requires no migration.
+
 The dedicated queue is entered only through Find opponent. Each account has one queue entry and cannot enter another active ranked match. Cancel applies to the current UUID ticket; a cancellation that loses the atomic pairing race returns the already-created match. Leaving the queue page closes its socket and cancels its ticket. Disconnected/stale searches expire rather than remain in background matchmaking.
 
 Actual wait seconds / maximum Elo gap: **0 / 100, 15 / 150, 30 / 250, 60 / 400, 90 / 600, 120 / 800**. Both players' current windows must allow the gap. Search never exceeds 800. Fairness policy: process oldest queued player first, choose their closest eligible opponent, then break equal gaps by oldest queue time and UUID. This deterministic policy avoids bypassing older eligible players to optimize later pairs. No player is paired with themselves.

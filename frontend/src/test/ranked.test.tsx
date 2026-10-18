@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
@@ -100,6 +101,7 @@ function state(): DuelState {
       total_tiles: 400,
       image_url: '/private',
       guessed_ids: [],
+      incorrect_guess_ids: [],
       completion: null,
     },
   };
@@ -124,6 +126,164 @@ beforeEach(() => {
   });
 });
 describe('Ranked duel', () => {
+  it('keeps a confirmed opponent mistake beneath Submit until the round ends', async () => {
+    page();
+    await screen.findByLabelText('Your one guess');
+    expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+    expect(screen.queryByText(/guess available|guess used/i)).not.toBeInTheDocument();
+    const wrong = state();
+    wrong.revision = 2;
+    wrong.round!.guessed_ids = ['p2'];
+    wrong.round!.incorrect_guess_ids = ['p2'];
+    vi.useFakeTimers();
+    try {
+      act(() => deliver(wrong));
+      const status = screen.getByText('Your opponent guessed incorrectly!');
+      const submit = screen.getByRole('button', { name: 'Submit guess' });
+      expect(status).toHaveAttribute('role', 'status');
+      expect(status).toHaveClass('field-help');
+      expect(submit.closest('form')!.nextElementSibling).toBe(status);
+      expect(status.closest('.ranked-controls')).toBe(submit.closest('.ranked-controls'));
+      act(() => vi.advanceTimersByTime(10000));
+      act(() => deliver({ ...wrong, revision: 3 }));
+      expect(screen.getAllByText('Your opponent guessed incorrectly!')).toHaveLength(1);
+      const result = structuredClone(wrong);
+      result.revision = 4;
+      result.round!.status = 'results';
+      result.round!.completion = { answer: 'cat', license: 'CC0', attribution: 'Original' };
+      act(() => deliver(result));
+      expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+      const next = state();
+      next.revision = 5;
+      next.round!.id = 'r2';
+      next.round!.number = 2;
+      next.round!.status = 'countdown';
+      act(() => deliver(next));
+      expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+      next.round!.status = 'active';
+      act(() => deliver({ ...next, revision: 6 }));
+      expect(screen.getByRole('button', { name: 'Submit guess' })).toBeInTheDocument();
+      // Delayed snapshots of the old round cannot restore its status.
+      act(() => deliver(wrong));
+      expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it.each(['correct', 'timeout', 'ambiguous', 'missing', 'own incorrect'])(
+    'never infers an opponent mistake from %s guess availability',
+    async (kind) => {
+      page();
+      await screen.findByLabelText('Your one guess');
+      act(() => deliver(state()));
+      const next = state();
+      next.revision = 2;
+      if (kind !== 'timeout') next.round!.guessed_ids = ['p2'];
+      if (kind === 'missing') delete next.round!.incorrect_guess_ids;
+      if (kind === 'own incorrect') {
+        next.round!.guessed_ids = ['p1'];
+        next.round!.incorrect_guess_ids = ['p1'];
+      }
+      if (kind === 'correct' || kind === 'timeout') {
+        next.round!.status = 'results';
+        next.round!.winner_id = kind === 'correct' ? 'p2' : null;
+        next.round!.completion = { answer: 'cat', license: 'CC0', attribution: 'Original' };
+      }
+      act(() => deliver(next));
+      expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+      expect(screen.queryByText(/guess available|guess used/i)).not.toBeInTheDocument();
+    },
+  );
+  it('reconstructs the current-round status on refresh and the first reconnect snapshot', async () => {
+    const wrong = state();
+    wrong.round!.guessed_ids = ['p2'];
+    wrong.round!.incorrect_guess_ids = ['p2'];
+    vi.mocked(rankedApi.state).mockResolvedValue(wrong);
+    const view = page();
+    await screen.findByLabelText('Your one guess');
+    expect(screen.getByText('Your opponent guessed incorrectly!')).toBeInTheDocument();
+    act(() => deliver(wrong));
+    expect(screen.getAllByText('Your opponent guessed incorrectly!')).toHaveLength(1);
+    view.unmount();
+    vi.mocked(rankedApi.state).mockResolvedValue(state());
+    page();
+    await screen.findByLabelText('Your one guess');
+    act(() => deliver(state()));
+    act(() => connectionChanged('Reconnecting'));
+    act(() => connectionChanged('Connected'));
+    act(() => deliver({ ...wrong, revision: 2 }));
+    expect(screen.getAllByText('Your opponent guessed incorrectly!')).toHaveLength(1);
+    act(() => deliver({ ...wrong, revision: 3 }));
+    expect(screen.getAllByText('Your opponent guessed incorrectly!')).toHaveLength(1);
+  });
+  it('preserves confirmed round status during interruption and clears it on a recovered new round', async () => {
+    page();
+    await screen.findByLabelText('Your one guess');
+    act(() => deliver(state()));
+    const wrong = state();
+    wrong.revision = 2;
+    wrong.round!.guessed_ids = ['p2'];
+    wrong.round!.incorrect_guess_ids = ['p2'];
+    act(() => deliver(wrong));
+    expect(screen.getByText('Your opponent guessed incorrectly!')).toBeInTheDocument();
+    act(() => connectionChanged('Reconnecting'));
+    expect(screen.getByText('Your opponent guessed incorrectly!')).toBeInTheDocument();
+    act(() => connectionChanged('Connected'));
+    expect(screen.getByText('Your opponent guessed incorrectly!')).toBeInTheDocument();
+    act(() => deliver({ ...wrong, revision: 3 }));
+    expect(screen.getAllByText('Your opponent guessed incorrectly!')).toHaveLength(1);
+    const next = state();
+    next.revision = 4;
+    next.round!.id = 'r2';
+    next.round!.number = 2;
+    act(() => deliver(next));
+    expect(screen.queryByText('Your opponent guessed incorrectly!')).not.toBeInTheDocument();
+  });
+  it('separates lobby navigation click targets without changing queue entry', async () => {
+    page('/ranked');
+    await screen.findByRole('button', { name: 'Find opponent' });
+    const nav = screen.getByRole('navigation', { name: 'Ranked lobby navigation' });
+    expect(within(nav).getByRole('link', { name: 'View Standings' })).toHaveAttribute(
+      'href',
+      '/leaderboards',
+    );
+    expect(within(nav).getByRole('link', { name: 'Back to Menu' })).toHaveAttribute('href', '/');
+    expect(
+      screen.getByText('45-second reveal · One guess per round · First to 4 decisive wins'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.rank-icon')).not.toBeInTheDocument();
+    expect(rankedApi.join).not.toHaveBeenCalled();
+  });
+  it.each(['win', 'loss', 'no_contest'])(
+    'centers and separates %s final actions while preserving destinations',
+    async (outcome) => {
+      const final = state();
+      final.status = 'complete';
+      final.outcome = outcome === 'no_contest' ? 'no_contest' : 'victory';
+      final.round = null;
+      final.winner_id = outcome === 'win' ? 'p1' : outcome === 'loss' ? 'p2' : null;
+      vi.mocked(rankedApi.state).mockResolvedValue(final);
+      page();
+      const again = await screen.findByRole('link', { name: 'Play Again' });
+      const actions = again.parentElement!;
+      const style = document.createElement('style');
+      style.textContent = readFileSync('src/pages/ranked-presentation.css', 'utf8');
+      document.head.append(style);
+      try {
+        const layout = getComputedStyle(actions);
+        expect(layout.display).toBe('flex');
+        expect(layout.gap).toBe('12px');
+        expect(layout.justifyContent).toBe('center');
+        expect(layout.flexWrap).toBe('wrap');
+      } finally {
+        style.remove();
+      }
+      expect(again).toHaveAttribute('href', '/ranked');
+      expect(again).toHaveClass('button');
+      expect(screen.getByRole('link', { name: 'Back to Menu' })).toHaveAttribute('href', '/');
+      expect(document.querySelector('.rank-icon')).not.toBeInTheDocument();
+    },
+  );
   it('focuses the guess input and submits only once for repeated Enter', async () => {
     let finish!: (value: { state: DuelState; result: 'incorrect' }) => void;
     vi.mocked(rankedApi.guess).mockImplementation(
@@ -341,6 +501,67 @@ describe('Ranked duel', () => {
     expect(screen.getByRole('link', { name: 'player' })).toHaveAttribute('href', '/players/player');
     expect(screen.queryByText('Unranked')).not.toBeInTheDocument();
   });
+  it('adds matching tier icons to standings and the server-configured ranked journey', async () => {
+    const tiers: [number, string][] = [
+      [1200, 'Bronze'],
+      [1400, 'Silver'],
+      [1600, 'Gold'],
+      [1800, 'Diamond'],
+    ];
+    vi.mocked(rankedApi.leaderboard).mockResolvedValue({
+      count: 4,
+      next: null,
+      previous: null,
+      my_position: null,
+      tiers,
+      results: tiers.map(([rating, tier], i) => ({
+        username: `player${i}`,
+        rating,
+        tier,
+        position: i + 1,
+      })),
+    });
+    page('/leaderboards');
+    await screen.findByText('1200');
+    for (const [minimum, tier] of tiers) {
+      const cell = screen.getByRole('cell', { name: tier });
+      expect(cell.querySelector(`.rank-icon-${tier.toLowerCase()}`)).toBeInTheDocument();
+      const step = screen.getByText(`${tier} · ${minimum}`);
+      expect(step.querySelector(`.rank-icon-${tier.toLowerCase()}`)).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toContain('Tier');
+  });
+  it.each([
+    [1200, 'Bronze'],
+    [1400, 'Silver'],
+    [1600, 'Gold'],
+    [1800, 'Diamond'],
+  ] as const)(
+    'places the %s Elo %s icon beside the profile rating without a separate text badge',
+    async (rating, tier) => {
+      vi.mocked(api).mockResolvedValue({ ...user, rating, ranked_tier: tier });
+      vi.mocked(rankedApi.history).mockResolvedValue({
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      });
+      page('/players/player');
+      const icon = await screen.findByRole('img', { name: `${tier} rank` });
+      expect(icon.previousElementSibling).toHaveTextContent(`${rating} Elo`);
+      expect(icon.parentElement).toHaveClass('profile-elo');
+      expect(document.querySelector('.profile-panel .badge')).not.toBeInTheDocument();
+      const style = document.createElement('style');
+      style.textContent = readFileSync('src/pages/ranked-presentation.css', 'utf8');
+      document.head.append(style);
+      try {
+        expect(getComputedStyle(icon.parentElement!).gap).toBe('8px');
+        expect(getComputedStyle(icon.parentElement!).alignItems).toBe('center');
+      } finally {
+        style.remove();
+      }
+    },
+  );
   it('shows public profile stats and history without private email', async () => {
     vi.mocked(api).mockResolvedValue(user);
     vi.mocked(rankedApi.history).mockResolvedValue({

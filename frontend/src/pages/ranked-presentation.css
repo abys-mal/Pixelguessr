@@ -1,0 +1,92 @@
+.ranked-lobby .page-heading {
+  padding: 32px 0 18px;
+  margin-bottom: 16px;
+}
+.ranked-lobby .ranked-queue {
+  padding: 22px 32px;
+}
+.ranked-lobby .ranked-emblem {
+  font-size: 52px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.ranked-lobby .ranked-queue > .eyebrow {
+  margin: 0 0 6px;
+}
+.ranked-lobby .ranked-queue > h2 {
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
+  margin: 0 0 14px;
+}
+.ranked-lobby .ranked-rules {
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0 0 8px;
+}
+.ranked-lobby .ranked-wash {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.ranked-lobby .ranked-warning {
+  max-width: 43ch;
+  margin: 16px auto 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.ranked-entry-links,
+.ranked-game .ranked-result-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ranked-entry-links {
+  margin: 18px auto 0;
+}
+.ranked-entry-links > a {
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+.profile-panel .profile-elo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.profile-elo .rank-icon {
+  width: 28px;
+  height: 28px;
+}
+.ranked-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.tier-panel .ranked-tier .rank-icon {
+  width: 22px;
+  height: 22px;
+}
+@media (max-width: 700px) {
+  .ranked-table .ranked-standings-table th,
+  .ranked-table .ranked-standings-table td {
+    padding: 12px 6px;
+  }
+  .ranked-standings-table .ranked-tier {
+    gap: 6px;
+  }
+  .ranked-standings-table .rank-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .ranked-lobby .ranked-queue {
+    padding: 22px 18px;
+  }
+  .ranked-entry-links {
+    gap: 12px;
+  }
+}

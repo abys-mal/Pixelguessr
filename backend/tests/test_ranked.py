@@ -186,12 +186,17 @@ def test_countdown_one_guess_wrong_not_loss_and_synonym(game, user, opponent, cl
     before = ranked.state(user, game.pk)
     assert before["round"]["status"] == "countdown" and before["round"]["revealed_count"] == 0
     assert before["round"]["completion"] is None
+    assert before["round"]["incorrect_guess_ids"] == []
     with pytest.raises(APIException):
         submit(user, game)
     advance(clock, 3)
     response = submit(user, game, "totally wrong")
     assert response["result"] == "incorrect"
     assert response["state"]["round"]["status"] == "active"
+    incorrect_id = str(game.participants.get(user=user).pk)
+    assert response["state"]["round"]["incorrect_guess_ids"] == [incorrect_id]
+    assert ranked.state(opponent, game.pk)["round"]["incorrect_guess_ids"] == [incorrect_id]
+    assert "totally wrong" not in json.dumps(ranked.state(opponent, game.pk))
     assert all(p["wins"] == 0 for p in response["state"]["players"])
     with pytest.raises(APIException):
         submit(user, game)
@@ -200,6 +205,7 @@ def test_countdown_one_guess_wrong_not_loss_and_synonym(game, user, opponent, cl
     assert response["result"] == "correct"
     assert response["state"]["round"]["completion"]["answer"] == current.answer_snapshot
     assert response["state"]["round"]["winner_id"] == str(game.participants.get(user=opponent).pk)
+    assert response["state"]["round"]["incorrect_guess_ids"] == [incorrect_id]
     assert not Guess.objects.filter(round__match=game).exists()
 
 
@@ -208,6 +214,9 @@ def test_both_wrong_wash_and_five_second_transition(game, user, opponent, clock)
     submit(user, game, "wrong")
     result = submit(opponent, game, "wrong too")["state"]
     assert result["round"]["status"] == "results" and result["round"]["winner_id"] is None
+    assert set(result["round"]["incorrect_guess_ids"]) == {
+        str(p.pk) for p in game.participants.all()
+    }
     assert all(p["wins"] == 0 for p in result["players"])
     old = result["round"]["id"]
     advance(clock, 4.9)
@@ -215,6 +224,7 @@ def test_both_wrong_wash_and_five_second_transition(game, user, opponent, clock)
     advance(clock, 0.1)
     new = ranked.state(user, game.pk)["round"]
     assert new["id"] != old and new["status"] == "active" and new["guessed_ids"] == []
+    assert new["incorrect_guess_ids"] == []
 
 
 def test_deadline_authoritative_and_no_guess_after_full_reveal(game, user, clock):

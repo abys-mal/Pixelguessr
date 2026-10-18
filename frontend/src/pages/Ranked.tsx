@@ -6,6 +6,7 @@ import { Badge, PageHeading, SignInPrompt, StatusMessage } from '../components/u
 import { RankedReveal } from '../games/RankedReveal';
 import { connectRanked, rankedApi, type ConnectionStatus, type QueueState } from '../games/ranked';
 import { useRanked, useServerTime } from '../games/useRanked';
+import './ranked-presentation.css';
 
 export function RankedEntry() {
   const { user, loading, restrictions } = useAuth();
@@ -113,10 +114,8 @@ function RankedQueue() {
     }
   };
   return (
-    <>
-      <PageHeading eyebrow="ONE ON ONE" title="Ranked Duel">
-        One guess. First to four decisive wins.
-      </PageHeading>
+    <section className="ranked-lobby">
+      <PageHeading eyebrow="ONE ON ONE" title="Ranked Duel" />
       <section className="panel ranked-queue">
         <div className="ranked-emblem" aria-hidden="true">
           ◇
@@ -139,14 +138,14 @@ function RankedQueue() {
           </>
         ) : (
           <>
-            <p className="muted">
-              A 45-second reveal. Incorrect guesses use your one guess. Both incorrect, or no
-              correct guess before time runs out: Wash.
+            <p className="ranked-rules">
+              45-second reveal · One guess per round · First to 4 decisive wins
             </p>
+            <p className="ranked-wash">Wash: neither player wins the round. Play another image.</p>
             <button className="button" disabled={pending} onClick={() => void search()}>
               {pending ? 'Please wait…' : 'Find opponent'}
             </button>
-            <p className="field-help">
+            <p className="ranked-warning">
               Leaving an active match counts as a loss. Connection interrupted? You have 30 seconds
               to return.
             </p>
@@ -154,11 +153,11 @@ function RankedQueue() {
         )}
         {error && <StatusMessage error>{error}</StatusMessage>}
       </section>
-      <div className="result-actions">
-        <Link to="/leaderboards">View standings ↗</Link>
-        <Link to="/">Back to menu</Link>
-      </div>
-    </>
+      <nav className="ranked-entry-links" aria-label="Ranked lobby navigation">
+        <Link to="/leaderboards">View Standings</Link>
+        <Link to="/">Back to Menu</Link>
+      </nav>
+    </section>
   );
 }
 export function RankedRoute() {
@@ -194,7 +193,9 @@ function RankedGame({ id }: { id: string }) {
     return <StatusMessage error={!!error}>{error || 'Connecting to your duel…'}</StatusMessage>;
   const round = state.round;
   const me = state.players.find((p) => p.id === state.me_id)!;
-  const opponent = state.players.find((p) => p.id !== state.me_id)!;
+  const opponent = state.players.find((p) => p.id !== state.me_id);
+  const opponentGuessedIncorrectly =
+    !!opponent && round?.incorrect_guess_ids?.includes(opponent.id);
   const complete = state.status === 'complete';
   const used = round?.guessed_ids.includes(me.id);
   const seconds = (date: string | null | undefined) =>
@@ -287,12 +288,12 @@ function RankedGame({ id }: { id: string }) {
               </div>
             ))}
           </div>
-          <div className="result-actions">
+          <div className="result-actions ranked-result-actions">
             <Link className="button" to="/ranked">
               Play Again
             </Link>
             <Link className="button secondary" to="/">
-              Back to menu
+              Back to Menu
             </Link>
           </div>
         </section>
@@ -352,10 +353,11 @@ function RankedGame({ id }: { id: string }) {
                         </button>
                       </form>
                     )}
-                    <p className="field-help">
-                      {opponent.username}:{' '}
-                      {round?.guessed_ids.includes(opponent.id) ? 'guess used' : 'guess available'}
-                    </p>
+                    {opponentGuessedIncorrectly && (
+                      <p className="field-help" role="status">
+                        Your opponent guessed incorrectly!
+                      </p>
+                    )}
                   </>
                 )}
                 {phase === 'results' && (

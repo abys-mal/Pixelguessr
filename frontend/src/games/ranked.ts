@@ -38,6 +38,7 @@ export interface DuelRound {
   total_tiles: number;
   image_url: string;
   guessed_ids: string[];
+  incorrect_guess_ids?: string[];
   completion: { answer: string; license: string; attribution: string } | null;
 }
 export interface DuelState {

@@ -698,6 +698,9 @@ def payload(match, user, now, *, snapshot=None):
         "total_tiles": game_round.grid_size**2,
         "image_url": f"/api/ranked/matches/{match.pk}/rounds/{game_round.pk}/image/?v={count}",
         "guessed_ids": [str(s.participant_id) for s in states if s.ranked_guessed_at],
+        "incorrect_guess_ids": [
+            str(s.participant_id) for s in states if s.ranked_guessed_at and not s.solved_at
+        ],
         "completion": {
             "answer": game_round.answer_snapshot,
             "license": game_round.image.license

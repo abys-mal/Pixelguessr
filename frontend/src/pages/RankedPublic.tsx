@@ -6,6 +6,8 @@ import { api, type Page, type User } from '../api';
 import { Badge, PageHeading, StatusMessage } from '../components/ui';
 import { useAuth } from '../auth/context';
 import { rankedApi, type Standing, type HistoryEntry } from '../games/ranked';
+import { RankIcon } from '../components/RankIcon';
+import './ranked-presentation.css';
 export function Pagination({
   page,
   next,
@@ -74,7 +76,7 @@ export function Leaderboards() {
             {data.count} rated players{data.my_position ? ` · Your rank: #${data.my_position}` : ''}
           </p>
           {data.results.length ? (
-            <table>
+            <table className="ranked-standings-table">
               <thead>
                 <tr>
                   <th>Rank</th>
@@ -93,7 +95,16 @@ export function Leaderboards() {
                       </Link>
                     </td>
                     <td>{p.rating}</td>
-                    <td>{p.tier ? <Badge tone="violet">{p.tier}</Badge> : '—'}</td>
+                    <td>
+                      {p.tier ? (
+                        <span className="ranked-tier">
+                          <RankIcon tier={p.tier} decorative />
+                          {p.tier}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -119,7 +130,10 @@ export function Leaderboards() {
         <div className="category-list">
           {data?.tiers?.map(([minimum, name]) => (
             <Badge key={name}>
-              {name} · {minimum}
+              <span className="ranked-tier">
+                <RankIcon tier={name} decorative />
+                {name} · {minimum}
+              </span>
             </Badge>
           ))}
         </div>
@@ -202,8 +216,10 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
           {(profile.display_name || profile.username).slice(0, 1).toUpperCase()}
         </div>
         <div>
-          <h2>{profile.rating} Elo</h2>
-          {profile.ranked_tier && <Badge tone="violet">{profile.ranked_tier}</Badge>}
+          <h2 className="profile-elo">
+            <span>{profile.rating} Elo</span>
+            <RankIcon tier={profile.ranked_tier} />
+          </h2>
 
           <p>
             {profile.ranked_wins} wins · {profile.ranked_losses} losses · {profile.ranked_matches}{' '}
