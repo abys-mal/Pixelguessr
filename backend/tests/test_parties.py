@@ -88,6 +88,97 @@ def action(client, code, name, request_id=None):
     )
 
 
+def next_round(client, code, round_id, request_id=None):
+    return client.post(
+        BASE + code + "/next/",
+        {"round_id": str(round_id), "request_id": str(request_id or uuid.uuid4())},
+        format="json",
+    )
+
+
+def test_intermission_is_durable_host_only_and_bound_to_completed_round(game, clock):
+    host, friend, code, rid = game
+    assert next_round(host, code, rid).json()["code"] == "round_not_ready"
+    guess(host, code, rid, answer(rid))
+    guess(friend, code, rid, answer(rid))
+    assert next_round(friend, code, rid).status_code == 403
+    assert next_round(host, code, uuid.uuid4()).status_code == 409
+    recovered = APIClient()
+    recovered.cookies = host.cookies.copy()
+    for _ in range(3):
+        advance_time(clock, 60)
+        clock_tick()
+        result = state(recovered, code)
+        assert result["round"]["id"] == rid and result["round"]["status"] == "results"
+        assert result["round"]["next_starts_at"] is None
+        assert result["round"]["completion"]["answer"] == answer(rid)
+    request_id = uuid.uuid4()
+    result = next_round(host, code, rid, request_id).json()
+    second = result["round"]["id"]
+    assert result["round"]["number"] == 2 and result["round"]["status"] == "countdown"
+    assert result["round"]["completion"] is None
+    assert result["round"]["started_at"] == (clock["now"] + timedelta(seconds=3)).isoformat()
+    assert next_round(host, code, rid, request_id).status_code == 200
+    assert next_round(host, code, rid).status_code == 409
+    advance_time(clock, 3)
+    guess(host, code, second, answer(second))
+    guess(friend, code, second, answer(second))
+    # An old acknowledgement retry or a delayed fresh command must not advance a later round.
+    assert next_round(host, code, rid, request_id).status_code == 200
+    assert next_round(host, code, rid).status_code == 409
+    assert state(host, code)["round"]["id"] == second
+    assert (
+        Round.objects.filter(match_id=result["match_id"], reveal_started_at__isnull=False).count()
+        == 2
+    )
+
+
+def test_inactivity_rejoin_preserves_identity_but_not_access_before_join(client, clock):
+    code = create(client).json()["code"]
+    friend = APIClient()
+    original = join(friend, code).json()
+    advance_time(clock, 16)
+    PartyMember.objects.filter(pk=original["me_id"]).update(
+        last_seen=clock["now"] - timedelta(seconds=16)
+    )
+    clock_tick()
+    assert friend.get(BASE + code + "/").json()["code"] == "membership_expired"
+    recovered = APIClient()
+    recovered.cookies = friend.cookies.copy()
+    result = join(recovered, code, automatic=True).json()
+    assert result["me_id"] == original["me_id"] and len(result["members"]) == 2
+    assert PartyMember.objects.filter(party__code=code).count() == 2
+    assert not PartyMember.objects.get(pk=original["me_id"]).departure_reason
+
+
+@pytest.mark.parametrize("reason", ["kicked", "disconnected", "left"])
+def test_departed_members_cannot_rejoin_or_read_an_active_match(client, images, clock, reason):
+    code = create(client, reveal_seconds=60, round_limit=5).json()["code"]
+    friend, third = APIClient(), APIClient()
+    member = join(friend, code).json()["me_id"]
+    join(third, code)
+    rid = action(client, code, "start").json()["round"]["id"]
+    advance_time(clock, 3)
+    PartyMember.objects.filter(pk=member).update(left_at=clock["now"], departure_reason=reason)
+    assert join(friend, code).json()["code"] == "match_started"
+    assert friend.get(BASE + code + "/").status_code in [403, 404]
+    assert friend.get(BASE + code + f"/rounds/{rid}/image/").status_code in [403, 404]
+
+
+@pytest.mark.parametrize("reason", ["kicked", "left", "banned"])
+def test_automatic_recovery_cannot_undo_a_host_kick_ban_or_intentional_leave(client, clock, reason):
+    code = create(client).json()["code"]
+    friend = APIClient()
+    member = join(friend, code).json()["me_id"]
+    if reason == "left":
+        action(friend, code, "leave")
+    else:
+        kick(client, code, member, ban=reason == "banned")
+    response = join(friend, code, automatic=True)
+    assert response.status_code == (404 if reason == "left" else 403)
+    assert PartyMember.objects.get(pk=member).left_at
+
+
 def guess(client, code, round_id, text, request_id=None, **extra):
     return client.post(
         BASE + code + "/guesses/",
@@ -298,6 +389,40 @@ def test_shared_countdown_order_and_private_frames(game, clock, images):
     assert first["round"]["revealed_count"] == 200
 
 
+def test_final_tile_is_private_until_deadline_and_late_guesses_remain_closed(game, clock):
+    from games.reveal import COVER_COLOR
+
+    host, friend, code, rid = game
+    game_round = Round.objects.get(pk=rid)
+    total = game_round.grid_size**2
+    deadline = game_round.reveal_started_at + timedelta(seconds=game_round.reveal_duration_seconds)
+    advance_time(clock, at=deadline - timedelta(microseconds=1))
+    before = state(host, code)["round"]
+    assert before["status"] == "active" and before["revealed_count"] == total - 1
+    assert before["completion"] is None
+    image = host.get(before["image_url"] + "&count=400")
+    assert int(image["X-Revealed-Tiles"]) == total - 1
+    row, col = divmod(game_round.reveal_order[-1], game_round.grid_size)
+    with Image.open(BytesIO(image.content)) as pixels:
+        point = (
+            int((col + 0.5) * pixels.width / game_round.grid_size),
+            int((row + 0.5) * pixels.height / game_round.grid_size),
+        )
+        assert pixels.convert("RGB").getpixel(point) == COVER_COLOR
+    advance_time(clock, at=deadline)
+    late = guess(friend, code, rid, answer(rid))
+    assert late.status_code == 409 and late.json()["code"] == "round_ended"
+    after = state(host, code)["round"]
+    assert after["status"] == "results" and after["revealed_count"] == total
+    assert len(after["revealed_tiles"]) == total and after["completion"]
+    image = host.get(after["image_url"])
+    assert int(image["X-Revealed-Tiles"]) == total
+    with Image.open(BytesIO(image.content)) as pixels:
+        assert pixels.convert("RGB").getpixel(point) != COVER_COLOR
+    game_round.refresh_from_db()
+    assert game_round.ended_at == deadline and not Guess.objects.filter(round_id=rid).exists()
+
+
 def test_penalty_cooldown_replay_floor_and_spectator(game, clock):
     host, friend, code, rid = game
     request_id = uuid.uuid4()
@@ -341,6 +466,8 @@ def test_correct_synonym_and_early_end_only_once(game, clock):
     assert all(p["total_score"] == 1000 for p in state(host, code)["leaderboard"])
     assert guess(friend, code, rid, "wrong").json()["code"] == "round_ended"
     advance_time(clock, 5)
+    assert state(host, code)["round"]["id"] == rid
+    assert next_round(host, code, rid).status_code == 200
     next_state = state(host, code)
     assert next_state["round"]["number"] == 2 and next_state["round"]["status"] == "countdown"
     assert next_state["round"]["me"]["round_score"] == 0
@@ -361,14 +488,12 @@ def test_deadline_round_final_completion_restart_and_selection(game, clock):
         assert completed["round"]["me"]["round_score"] == 0
         if number < 5:
             assert completed["status"] == "playing"
-            advance_time(clock, 8)
+            assert next_round(host, code, game_round.pk).status_code == 200
+            advance_time(clock, 3)
         else:
-            assert completed["status"] == "playing"
-            advance_time(clock, 5)
-            clock_tick()
-            completed = state(host, code)
             assert completed["status"] == "complete"
             assert len(completed["winners"]) == 2
+            assert next_round(host, code, game_round.pk).status_code == 409
     assert len(set(seen[:3])) == 3
     assert all(a != b for a, b in zip(seen, seen[1:], strict=False))
     match_id = completed["match_id"]
@@ -391,7 +516,8 @@ def test_penalties_reduce_previous_points_and_negative_round(game, clock):
     host, friend, code, rid = game
     guess(host, code, rid, answer(rid))
     guess(friend, code, rid, answer(rid))
-    advance_time(clock, 8)
+    assert next_round(host, code, rid).status_code == 200
+    advance_time(clock, 3)
     second = state(host, code)["round"]["id"]
     for _ in range(3):
         assert guess(host, code, second, "wrong").status_code == 200
@@ -555,11 +681,13 @@ def test_paused_library_recovers_with_a_fresh_countdown(game, clock):
     guess(friend, code, rid, answer(rid))
     ImageSubmission.objects.update(status="pending")
     advance_time(clock, 5)
-    paused = state(host, code)
-    assert paused["message"] and paused["round"]["number"] == 1
+    request_id = uuid.uuid4()
+    assert next_round(host, code, rid, request_id).status_code == 503
+    assert state(host, code)["round"]["number"] == 1
     advance_time(clock, 90)
     ImageSubmission.objects.update(status="approved")
-    resumed = state(host, code)
+    assert state(host, code)["round"]["number"] == 1
+    resumed = next_round(host, code, rid, request_id).json()
     assert resumed["round"]["number"] == 2 and resumed["round"]["status"] == "countdown"
     assert resumed["round"]["started_at"] == (clock["now"] + timedelta(seconds=3)).isoformat()
 
@@ -579,7 +707,7 @@ def test_live_socket_identity_reloads_revoked_session(client):
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)
-@pytest.mark.parametrize("operation", ["start", "correct", "join"])
+@pytest.mark.parametrize("operation", ["start", "correct", "join", "next", "next_retry"])
 def test_concurrent_party_transitions(client, images, clock, operation):
     from threading import Barrier
 
@@ -591,12 +719,16 @@ def test_concurrent_party_transitions(client, images, clock, operation):
     if operation == "join":
         for index in range(9):
             join(APIClient(), code, f"Player {index}")
-    elif operation == "correct":
+    elif operation in ["correct", "next", "next_retry"]:
         rid = action(client, code, "start").json()["round"]["id"]
         advance_time(clock, 3)
         canonical = answer(rid)
+        if operation in ["next", "next_retry"]:
+            guess(client, code, rid, canonical)
+            guess(friend, code, rid, canonical)
     barrier = Barrier(2)
     cookies = client.cookies.copy()
+    shared_request = uuid.uuid4()
 
     def run(index):
         close_old_connections()
@@ -609,24 +741,36 @@ def test_concurrent_party_transitions(client, images, clock, operation):
                 return action(worker, code, "start").status_code
             if operation == "correct":
                 return guess(worker, code, rid, canonical).status_code
+            if operation in ["next", "next_retry"]:
+                return next_round(
+                    worker, code, rid, shared_request if operation == "next_retry" else None
+                ).status_code
             return join(worker, code, f"New {index}").status_code
         finally:
             close_old_connections()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = sorted(pool.map(run, [0, 1]))
-    assert results == [200, 409]
+    assert results == ([200, 200] if operation == "next_retry" else [200, 409])
     if operation == "join":
         assert PartyMember.objects.filter(party__code=code, left_at__isnull=True).count() == 12
     elif operation == "start":
         assert Match.objects.filter(mode="party").count() == 1
-    else:
+    elif operation == "correct":
         assert Guess.objects.filter(round_id=rid).count() == 1
         assert (
             RoundPlayerState.objects.get(
                 round_id=rid, participant__party_member_id=Party.objects.get(code=code).host_id
             ).score
             == 1000
+        )
+    else:
+        assert (
+            Round.objects.filter(
+                match_id=Party.objects.get(code=code).current_match_id,
+                reveal_started_at__isnull=False,
+            ).count()
+            == 2
         )
 
 
@@ -1010,3 +1154,44 @@ def test_probation_preserves_party_access_under_existing_policy(client, user, st
     )
     client.force_login(user)
     assert create(client).status_code == 201
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+async def test_socket_actions_cannot_bypass_manual_host_advancement(client, images, clock):
+    from config.asgi import application
+
+    def setup():
+        code = create(client, reveal_seconds=15, round_limit=5).json()["code"]
+        friend = APIClient()
+        join(friend, code)
+        rid = action(client, code, "start").json()["round"]["id"]
+        advance_time(clock, 3)
+        guess(client, code, rid, answer(rid))
+        guess(friend, code, rid, answer(rid))
+        return code, rid, [client.cookies["sessionid"].value, friend.cookies["sessionid"].value]
+
+    code, rid, cookies = await database_sync_to_async(setup)()
+    for cookie in cookies:
+        ws = WebsocketCommunicator(
+            application,
+            f"/ws/parties/{code}/",
+            headers=[
+                (b"origin", b"http://localhost:5173"),
+                (b"host", b"localhost:8000"),
+                (b"cookie", f"sessionid={cookie}".encode()),
+            ],
+        )
+        assert (await ws.connect())[0]
+        initial = await ws.receive_json_from()
+        assert initial["state"]["round"]["id"] == rid
+        assert initial["state"]["round"]["status"] == "results"
+        await ws.send_json_to({"type": "next", "round_id": rid, "request_id": str(uuid.uuid4())})
+        for _ in range(3):
+            reply = await ws.receive_json_from()
+            if reply["type"] == "error":
+                break
+        assert reply["type"] == "error" and reply["detail"] == "Unsupported party action."
+        await ws.disconnect()
+    result = await database_sync_to_async(state)(client, code)
+    assert result["round"]["id"] == rid and result["round"]["status"] == "results"

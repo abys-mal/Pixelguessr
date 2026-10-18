@@ -463,6 +463,12 @@ export function PartyGame() {
   const navigate = useNavigate();
   const [guessDraft, setGuessDraft] = useState({ roundId: '', text: '' });
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   const input = useRef<HTMLInputElement | null>(null);
   const focusGuess = useCallback((node: HTMLInputElement | null) => {
     input.current = node;
@@ -470,6 +476,10 @@ export function PartyGame() {
   }, []);
   const state = game.state;
   const round = state?.round;
+  const [paintedRound, setPaintedRound] = useState('');
+  const finalFramePainted = useCallback((roundId: string) => setPaintedRound(roundId), []);
+  const awaitingFinalFrame = round?.status === 'results' && paintedRound !== round.id;
+  const showFinal = state?.status === 'complete' && !awaitingFinalFrame;
   const guess = guessDraft.roundId === round?.id ? guessDraft.text : '';
   const countdown = round
     ? Math.max(
@@ -502,11 +512,13 @@ export function PartyGame() {
   };
   const invite = `${window.location.origin}/party/${code}`;
   const copy = async () => {
+    setCopyError('');
     try {
       await navigator.clipboard.writeText(invite);
       setCopied(true);
     } catch {
       setCopied(false);
+      setCopyError('Unable to copy. Select the invite URL and copy it manually.');
     }
   };
   if (game.loading)
@@ -552,12 +564,19 @@ export function PartyGame() {
               : 'Party unavailable'}
           </h1>
           <p role="alert">{game.error || 'Create a party or check your invite code.'}</p>
-          <Link className="button" to="/">
-            Return Home
-          </Link>
-          <Link className="button secondary" to="/party/join">
-            Join a Party
-          </Link>
+          <div className="party-exit-actions" role="group" aria-label="Party navigation">
+            {['party_removed', 'membership_expired'].includes(game.accessCode) && (
+              <button className="button" disabled={game.busy} onClick={() => void game.join()}>
+                {game.busy ? 'Rejoining…' : 'Rejoin Party'}
+              </button>
+            )}
+            <Link className="button" to="/">
+              Return Home
+            </Link>
+            <Link className="button secondary" to="/party/join">
+              Join a Party
+            </Link>
+          </div>
         </div>
       </section>
     );
@@ -570,9 +589,11 @@ export function PartyGame() {
             {state.status === 'aborted' ? 'Match ended' : 'Party closed'}
           </h1>
           <p role="status">{state.end_message || 'This party has ended.'}</p>
-          <Link className="button" to="/">
-            Return Home
-          </Link>
+          <div className="party-exit-actions">
+            <Link className="button" to="/">
+              Return Home
+            </Link>
+          </div>
         </section>
       </section>
     );
@@ -592,15 +613,12 @@ export function PartyGame() {
           <h1>
             {state.status === 'lobby'
               ? 'Party lobby'
-              : state.status === 'complete'
+              : showFinal
                 ? 'Final standings'
                 : `Round ${round?.number} of ${state.settings.round_limit}`}
           </h1>
         </div>
         <div className="party-header-actions">
-          <button className="button secondary" onClick={() => void copy()}>
-            {copied ? 'Link copied' : 'Copy Invite Link'}
-          </button>
           <button
             className="button secondary"
             disabled={game.busy}
@@ -613,11 +631,42 @@ export function PartyGame() {
         </div>
       </header>
       {state.status === 'lobby' && (
-        <p className="party-invite">
+        <div className="party-invite">
           <a href={invite}>{invite}</a>
-        </p>
+          <button
+            className="party-copy-invite"
+            aria-label="Copy invite link"
+            title="Copy invite link"
+            onClick={() => void copy()}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              {copied ? (
+                <path d="m5 12 4 4L19 6" />
+              ) : (
+                <>
+                  <rect x="8" y="8" width="12" height="12" rx="2" />
+                  <path d="M16 8V4H4v12h4" />
+                </>
+              )}
+            </svg>
+          </button>
+          <span className="party-copy-feedback" role="status">
+            {copied ? 'Link copied' : ''}
+          </span>
+          {copyError && <span role="alert">{copyError}</span>}
+        </div>
       )}
-      {!game.connection && (
+      {game.reconnecting && (
         <p className="service-banner" role="status">
           Reconnecting… Your progress is saved.
         </p>
@@ -634,7 +683,7 @@ export function PartyGame() {
       )}
       {state.message && (
         <p role="alert" className="message error">
-          {state.message} The party will retry automatically.
+          {state.message}
         </p>
       )}
       {state.status === 'lobby' ? (
@@ -647,7 +696,7 @@ export function PartyGame() {
           kick={game.kick}
           error={game.error}
         />
-      ) : state.status === 'complete' ? (
+      ) : showFinal ? (
         <section className="panel final-results">
           <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
             Final Results
@@ -660,7 +709,7 @@ export function PartyGame() {
               .join(', ')}
           </p>
           <Leaderboard players={state.leaderboard} me={state.me_id} finished />
-          <div className="final-actions">
+          <div className="final-actions party-exit-actions">
             <button
               className="button"
               disabled={game.busy}
@@ -676,24 +725,32 @@ export function PartyGame() {
       ) : (
         round && (
           <>
-            <div className="game-layout">
+            <div
+              className={`game-layout${round.status === 'results' && !awaitingFinalFrame ? ' party-intermission' : ''}`}
+            >
               <section className="picture-panel">
                 <div className="picture-toolbar">
                   <span>
-                    {round.status === 'countdown'
-                      ? 'Starting soon'
-                      : round.status === 'results'
-                        ? 'Round complete'
-                        : 'Image reveal'}
+                    {awaitingFinalFrame
+                      ? 'Final reveal'
+                      : round.status === 'countdown'
+                        ? 'Starting soon'
+                        : round.status === 'results'
+                          ? 'Round complete'
+                          : 'Image reveal'}
                   </span>
-                  <strong
-                    className="game-clock"
-                    aria-label={round.status === 'countdown' ? 'Start countdown' : 'Time Remaining'}
-                  >
-                    {round.status === 'results' ? '0' : countdown}s
-                  </strong>
+                  {round.status !== 'results' && (
+                    <strong
+                      className="game-clock"
+                      aria-label={
+                        round.status === 'countdown' ? 'Start countdown' : 'Time Remaining'
+                      }
+                    >
+                      {countdown}s
+                    </strong>
+                  )}
                 </div>
-                <Reveal round={round} />
+                <Reveal round={round} onFullReveal={finalFramePainted} />
                 <div
                   className="reveal-progress"
                   role="progressbar"
@@ -710,9 +767,37 @@ export function PartyGame() {
                   </span>
                   <span>{state.settings.reveal_seconds}-second reveal</span>
                 </div>
+                {round.status === 'results' && !awaitingFinalFrame && (
+                  <div className="party-intermission-answer">
+                    <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
+                      Round {round.number} results
+                    </h2>
+                    <p className="result-answer">{round.completion?.answer}</p>
+                    <details className="image-credit">
+                      <summary>Image credit</summary>
+                      <p>
+                        {round.completion?.category} · {round.completion?.license}
+                      </p>
+                      <p>{round.completion?.attribution}</p>
+                    </details>
+                  </div>
+                )}
               </section>
               <aside className="guess-panel">
-                {round.status === 'countdown' ? (
+                {awaitingFinalFrame ? (
+                  <div>
+                    <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
+                      Round finished
+                    </h2>
+                    <p role="status">Showing the final image… Guessing is closed.</p>
+                    <button
+                      className="button secondary"
+                      onClick={() => finalFramePainted(round.id)}
+                    >
+                      View results
+                    </button>
+                  </div>
+                ) : round.status === 'countdown' ? (
                   <div key={`${round.id}:countdown`}>
                     <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
                       Get ready
@@ -723,23 +808,32 @@ export function PartyGame() {
                   </div>
                 ) : round.status === 'results' ? (
                   <div key={`${round.id}:results`}>
-                    <h2 className="result-focus-target" ref={focusHeading} tabIndex={-1}>
-                      Round {round.number} results
-                    </h2>
-                    <p className="result-answer">{round.completion?.answer}</p>
-                    <p role="status" className="waiting-message">
-                      {round.number === state.settings.round_limit
-                        ? 'Final standings'
-                        : 'Next round'}{' '}
-                      in {countdown}s
+                    <p className="eyebrow">
+                      Round {round.number} of {state.settings.round_limit}
                     </p>
-                    <details className="image-credit">
-                      <summary>Image credit</summary>
-                      <p>
-                        {round.completion?.category} · {round.completion?.license}
-                      </p>
-                      <p>{round.completion?.attribution}</p>
-                    </details>
+                    {round.number < state.settings.round_limit &&
+                      (state.me_id === state.host_id ? (
+                        <button
+                          className="button game-button"
+                          disabled={game.busy}
+                          onClick={() => void game.next()}
+                        >
+                          Next Round
+                        </button>
+                      ) : (
+                        <p role="status" className="waiting-message">
+                          Waiting for host…
+                        </p>
+                      ))}
+                    <div
+                      className="party-intermission-standings"
+                      tabIndex={0}
+                      role="region"
+                      aria-label="Round and overall standings"
+                    >
+                      <Leaderboard players={state.leaderboard} me={state.me_id} round finished />
+                      <Leaderboard players={state.leaderboard} me={state.me_id} finished />
+                    </div>
                   </div>
                 ) : round.me.solved ? (
                   <div key={`${round.id}:solved`}>
@@ -783,21 +877,11 @@ export function PartyGame() {
                 )}
               </aside>
             </div>
-            {round.status === 'results' && (
-              <section className="panel party-round-ranking">
-                <Leaderboard players={state.leaderboard} me={state.me_id} round finished />
-              </section>
-            )}
             {round.status !== 'results' && (
               <p className="party-solved-status" role="status">
                 {state.leaderboard.filter((player) => !player.left && player.solved).length} of{' '}
                 {state.leaderboard.filter((player) => !player.left).length} players solved
               </p>
-            )}
-            {round.status === 'results' && (
-              <section className="panel party-overall">
-                <Leaderboard players={state.leaderboard} me={state.me_id} finished />
-              </section>
             )}
           </>
         )

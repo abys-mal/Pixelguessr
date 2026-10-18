@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { RankedReveal } from '../games/RankedReveal';
 import type { DuelRound } from '../games/ranked';
@@ -56,6 +56,114 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('Server-masked reveal delivery', () => {
+  it('waits for full-frame decode and a paint opportunity before party results', async () => {
+    let finishDecode!: () => void;
+    const decode = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishDecode = resolve;
+          }),
+      );
+    vi.stubGlobal(
+      'Image',
+      class {
+        src = '';
+        decode = decode;
+      },
+    );
+    const frames = new Map<number, FrameRequestCallback>();
+    let sequence = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.set(++sequence, callback);
+      return sequence;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    const ready = vi.fn();
+    const view = render(<Reveal round={round} onFullReveal={ready} />);
+    await screen.findByRole('img');
+    view.rerender(
+      <Reveal
+        round={{
+          ...round,
+          image_url: '/image/?v=400',
+          revealed_tiles: Array.from({ length: 400 }, (_, i) => i),
+          completion: { answer: 'lighthouse' },
+        }}
+        onFullReveal={ready}
+      />,
+    );
+    await waitFor(() => expect(decode).toHaveBeenCalledTimes(2));
+    expect(document.querySelectorAll('.is-revealed')).toHaveLength(2);
+    expect(ready).not.toHaveBeenCalled();
+    await act(async () => finishDecode());
+    await waitFor(() => expect(document.querySelectorAll('.is-revealed')).toHaveLength(400));
+    expect(document.querySelector('.reveal-stage')).toHaveClass('party-final-frame');
+    view.rerender(
+      <Reveal
+        round={{
+          ...round,
+          image_url: '/image/?v=400',
+          revealed_tiles: Array.from({ length: 400 }, (_, i) => i),
+          completion: { answer: 'lighthouse' },
+        }}
+        onFullReveal={ready}
+      />,
+    );
+    expect(sequence).toBe(1); // Repeated snapshots must not restart the paint handoff.
+    const paint = () => {
+      const next = frames.entries().next().value!;
+      frames.delete(next[0]);
+      next[1](16);
+    };
+    act(paint);
+    expect(ready).not.toHaveBeenCalled();
+    act(paint);
+    expect(ready).toHaveBeenCalledExactlyOnceWith(round.id);
+  });
+  it('cancels pending party completion callbacks when its image unmounts', async () => {
+    const ready = vi.fn();
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.set(1, callback);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    const view = render(
+      <Reveal
+        round={{
+          ...round,
+          revealed_tiles: Array.from({ length: 400 }, (_, i) => i),
+          completion: { answer: 'lighthouse' },
+        }}
+        onFullReveal={ready}
+      />,
+    );
+    await waitFor(() => expect(frames.size).toBe(1));
+    view.unmount();
+    expect(frames.size).toBe(0);
+    expect(ready).not.toHaveBeenCalled();
+  });
+  it('does not report a failed final frame as ready', async () => {
+    const ready = vi.fn();
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }));
+    render(
+      <Reveal
+        round={{
+          ...round,
+          revealed_tiles: Array.from({ length: 400 }, (_, i) => i),
+          completion: { answer: 'lighthouse' },
+        }}
+        onFullReveal={ready}
+      />,
+    );
+    await screen.findByRole('alert');
+    expect(ready).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('.is-revealed')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Reload picture' })).toBeInTheDocument();
+  });
   it('does not download an image before a round starts', () => {
     render(<Reveal round={null} />);
     expect(fetch).not.toHaveBeenCalled();

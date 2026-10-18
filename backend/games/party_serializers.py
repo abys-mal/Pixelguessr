@@ -22,7 +22,7 @@ class PartySettingsSerializer(serializers.Serializer):
 
 class JoinPartySerializer(serializers.Serializer):
     # Legacy supplied names are ignored; all guest names are server generated.
-    pass
+    automatic = serializers.BooleanField(default=False)
 
 
 class CreatePartySerializer(PartySettingsSerializer):
@@ -41,3 +41,7 @@ class PartyGuessSerializer(GuessSerializer):
 
 
 PartyActionSerializer = StartRoundSerializer
+
+
+class PartyNextSerializer(StartRoundSerializer):
+    round_id = serializers.UUIDField()

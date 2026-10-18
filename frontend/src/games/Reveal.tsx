@@ -5,7 +5,13 @@ import type { GameRound } from './singleplayer';
 type RevealRound = Pick<GameRound, 'id' | 'image_url' | 'grid_size' | 'revealed_tiles'> & {
   completion: { answer: string } | null;
 };
-export function Reveal({ round }: { round: RevealRound | null }) {
+export function Reveal({
+  round,
+  onFullReveal,
+}: {
+  round: RevealRound | null;
+  onFullReveal?: (roundId: string) => void;
+}) {
   const [frame, setFrame] = useState<{ url: string; roundId: string; tiles: Set<number> } | null>(
     null,
   );
@@ -60,8 +66,25 @@ export function Reveal({ round }: { round: RevealRound | null }) {
   }, [frame?.url]);
   const current = frame?.roundId === round?.id ? frame : null;
   const grid = round?.grid_size ?? 20;
+  const completed = !!round?.completion;
+  useEffect(() => {
+    if (!onFullReveal || !completed || !current || current.tiles.size !== grid * grid) return;
+    // The decoded, server-authorized full frame must paint before Parties changes layout.
+    // Two animation frames leave a paint opportunity between committing the image and results.
+    let painted = 0;
+    const ready = requestAnimationFrame(() => {
+      painted = requestAnimationFrame(() => onFullReveal(current.roundId));
+    });
+    return () => {
+      cancelAnimationFrame(ready);
+      cancelAnimationFrame(painted);
+    };
+  }, [current, grid, onFullReveal, completed]);
   return (
-    <div className="reveal-stage" style={{ '--grid': grid } as CSSProperties}>
+    <div
+      className={`reveal-stage${onFullReveal && round?.completion ? ' party-final-frame' : ''}`}
+      style={{ '--grid': grid } as CSSProperties}
+    >
       {current && (
         <img
           className="game-image"

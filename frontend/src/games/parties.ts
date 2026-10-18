@@ -67,10 +67,10 @@ const url = (code: string) => `/api/parties/${encodeURIComponent(code.toUpperCas
 export const partyApi = {
   create: (data: { reveal_seconds: number; round_limit: number; request_id: string }) =>
     api<PartyState>('/api/parties/', { method: 'POST', body: JSON.stringify(data) }),
-  join: (code: string) =>
+  join: (code: string, automatic = false) =>
     api<PartyState>(url(code) + 'join/', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(automatic ? { automatic: true } : {}),
     }),
   kick: (code: string, target_id: string, prevent_rejoin: boolean, request_id: string) =>
     api<PartyState>(url(code) + 'kick/', {
@@ -84,6 +84,11 @@ export const partyApi = {
     api<PartyState>(url(code) + `${action}/`, {
       method: 'POST',
       body: JSON.stringify({ request_id }),
+    }),
+  next: (code: string, round_id: string, request_id: string) =>
+    api<PartyState>(url(code) + 'next/', {
+      method: 'POST',
+      body: JSON.stringify({ round_id, request_id }),
     }),
   leave: (code: string) => api<void>(url(code) + 'leave/', { method: 'POST' }),
   guess: (code: string, data: PartyGuess) =>

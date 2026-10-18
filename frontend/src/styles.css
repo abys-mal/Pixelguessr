@@ -1666,15 +1666,112 @@ main {
   flex-wrap: wrap;
   gap: 10px;
 }
+.party-page .party-exit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.party-final-frame .game-tiles i {
+  transition: none;
+}
 .party-header-actions .button {
   padding: 12px 16px;
   font-size: 12px;
 }
 .party-invite {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin: -15px 0 28px;
   font-size: 13px;
   overflow-wrap: anywhere;
   color: var(--muted);
+}
+.party-invite a {
+  min-width: 0;
+}
+.party-copy-invite {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel);
+  cursor: pointer;
+}
+.party-copy-invite:hover {
+  color: var(--mint);
+}
+.party-copy-invite:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 3px;
+}
+.party-copy-feedback {
+  color: var(--mint);
+}
+.party-intermission {
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr);
+}
+.party-intermission .reveal-stage {
+  aspect-ratio: auto;
+  height: clamp(220px, 40vh, 430px);
+}
+.party-intermission-answer {
+  padding: 0 22px 20px;
+  overflow-wrap: anywhere;
+}
+.party-intermission-answer h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.party-intermission-answer .result-answer {
+  margin: 10px 0;
+}
+.party-intermission .guess-panel {
+  min-width: 0;
+  padding: 20px;
+}
+.party-intermission .eyebrow {
+  margin: 0 0 14px;
+}
+.party-intermission-standings {
+  margin-top: 20px;
+  max-height: min(48vh, 460px);
+  overflow: auto;
+}
+.party-intermission-standings .party-table-wrap {
+  overflow: visible;
+}
+.party-intermission-standings .party-leaderboard {
+  table-layout: fixed;
+}
+.party-intermission-standings .party-leaderboard th,
+.party-intermission-standings .party-leaderboard td {
+  padding: 10px 6px;
+  overflow-wrap: anywhere;
+}
+.party-intermission-standings .party-leaderboard th:first-child {
+  width: 12%;
+}
+.party-intermission-standings .party-leaderboard th:nth-child(2) {
+  width: 44%;
+}
+.party-intermission-standings .party-leaderboard caption {
+  text-align: left;
+  padding: 10px 0;
+}
+@media (max-width: 800px) {
+  .party-intermission {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .party-intermission-standings {
+    max-height: 460px;
+  }
 }
 .party-lobby {
   display: grid;

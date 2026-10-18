@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -21,12 +22,32 @@ vi.mock('../games/parties', () => ({
     current: vi.fn(),
     settings: vi.fn(),
     action: vi.fn(),
+    next: vi.fn(),
     leave: vi.fn(),
     guess: vi.fn(),
     kick: vi.fn(),
   },
 }));
-vi.mock('../games/Reveal', () => ({ Reveal: () => <div aria-label="Server-masked picture" /> }));
+vi.mock('../games/Reveal', async () => {
+  const { useEffect } = await import('react');
+  return {
+    Reveal: ({
+      round,
+      onFullReveal,
+    }: {
+      round: PartyState['round'];
+      onFullReveal?: (id: string) => void;
+    }) => {
+      finishFrame = onFullReveal;
+      useEffect(() => {
+        if (!holdFinalFrame && round?.status === 'results') onFullReveal?.(round.id);
+      }, [round, onFullReveal]);
+      return <div aria-label="Server-masked picture" />;
+    },
+  };
+});
+let holdFinalFrame = false;
+let finishFrame: ((id: string) => void) | undefined;
 const guest = {
   user: null,
   restrictions: null,
@@ -115,6 +136,7 @@ function update(state: PartyState) {
   act(() => push(current));
 }
 beforeEach(() => {
+  holdFinalFrame = false;
   current = makeParty();
   sendGuess = vi.fn(async () => ({ state: current, result: 'incorrect' as const }));
   vi.mocked(partyApi.current).mockImplementation(async () => current);
@@ -130,6 +152,14 @@ beforeEach(() => {
     return current;
   });
   vi.mocked(partyApi.leave).mockResolvedValue(undefined);
+  vi.mocked(partyApi.next).mockImplementation(async () => {
+    current = {
+      ...current,
+      revision: current.revision + 1,
+      round: { ...active().round!, id: 'round-two', number: 2, status: 'countdown' },
+    };
+    return current;
+  });
   vi.mocked(partyApi.kick).mockImplementation(async (_code, id) => {
     current = {
       ...current,
@@ -148,6 +178,188 @@ beforeEach(() => {
 });
 
 describe('Multiplayer parties', () => {
+  it.each(['playing', 'complete'] as const)(
+    'paints the completed image before %s results without accepting late guesses',
+    async (status) => {
+      holdFinalFrame = true;
+      current = active();
+      page();
+      await screen.findByLabelText('Your Guess');
+      update({
+        ...current,
+        status,
+        round: {
+          ...current.round!,
+          status: 'results',
+          revealed_count: 400,
+          revealed_tiles: Array.from({ length: 400 }, (_, i) => i),
+          completion: {
+            answer: 'lighthouse',
+            category: 'Places',
+            license: 'CC0',
+            attribution: 'Original',
+          },
+        },
+      });
+      expect(screen.getByText('Showing the final image… Guessing is closed.')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Your Guess')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Next Round' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Final Results' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Round 1 results' })).not.toBeInTheDocument();
+      act(() => finishFrame?.('round-one'));
+      expect(
+        screen.getByRole('heading', {
+          name: status === 'complete' ? 'Final Results' : 'Round 1 results',
+        }),
+      ).toBeInTheDocument();
+      expect(sendGuess).not.toHaveBeenCalled();
+    },
+  );
+  it('allows results access if the final image cannot load', async () => {
+    const user = userEvent.setup();
+    holdFinalFrame = true;
+    current = active();
+    current.round!.status = 'results';
+    page();
+    await user.click(await screen.findByRole('button', { name: 'View results' }));
+    expect(screen.getByRole('heading', { name: 'Round 1 results' })).toBeInTheDocument();
+  });
+  it.each(['party_removed', 'membership_expired', 'party_banned'])(
+    'groups the %s screen navigation buttons in the local wrapping layout',
+    async (code) => {
+      vi.mocked(partyApi.current).mockRejectedValue(
+        new ApiError('Membership unavailable.', 403, code),
+      );
+      if (code === 'membership_expired')
+        vi.mocked(partyApi.join).mockRejectedValue(
+          new ApiError('Membership unavailable.', 503, code),
+        );
+      page();
+      const actions = await screen.findByRole('group', { name: 'Party navigation' });
+      expect(actions).toHaveClass('party-exit-actions');
+      const style = document.createElement('style');
+      style.textContent = readFileSync('src/styles.css', 'utf8');
+      document.head.append(style);
+      try {
+        const layout = getComputedStyle(actions);
+        expect(layout.display).toBe('flex');
+        expect(layout.gap).toBe('12px');
+        expect(layout.flexWrap).toBe('wrap');
+      } finally {
+        style.remove();
+      }
+      expect(within(actions).getByRole('link', { name: 'Return Home' })).toBeInTheDocument();
+      expect(within(actions).getByRole('link', { name: 'Join a Party' })).toBeInTheDocument();
+      if (code !== 'party_banned')
+        expect(within(actions).getByRole('button', { name: 'Rejoin Party' })).toBeInTheDocument();
+    },
+  );
+  it('does not announce reconnecting before the first socket opens or after an initial failure', async () => {
+    vi.mocked(connectParty).mockImplementation((_code, onState, onConnection) => {
+      push = onState;
+      online = onConnection;
+      return { guess: sendGuess, close: vi.fn() };
+    });
+    page();
+    await screen.findByRole('heading', { name: 'Party lobby' });
+    expect(screen.queryByText(/Reconnecting… Your progress/)).not.toBeInTheDocument();
+    act(() => online(false));
+    expect(screen.queryByText(/Reconnecting… Your progress/)).not.toBeInTheDocument();
+    act(() => online(true));
+    act(() => online(false));
+    expect(screen.getByText('Reconnecting… Your progress is saved.')).toBeInTheDocument();
+  });
+  it('offers explicit rejoining after an unbanned kick without automatically joining on refresh', async () => {
+    const user = userEvent.setup();
+    vi.mocked(partyApi.current).mockRejectedValueOnce(
+      new ApiError('You were removed from this party.', 403, 'party_removed'),
+    );
+    page();
+    await screen.findByRole('heading', { name: 'Removed from party' });
+    expect(partyApi.join).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Rejoin Party' }));
+    await screen.findByRole('heading', { name: 'Party lobby' });
+    expect(partyApi.join).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(connectParty).toHaveBeenCalledTimes(1));
+  });
+  it('automatically attempts one rejoin after inactivity on initial entry', async () => {
+    vi.mocked(partyApi.current).mockRejectedValueOnce(
+      new ApiError('Connection expired.', 403, 'membership_expired'),
+    );
+    page();
+    await screen.findByRole('heading', { name: 'Party lobby' });
+    expect(partyApi.join).toHaveBeenCalledOnce();
+    expect(partyApi.join).toHaveBeenCalledWith('K7M2Q9', true);
+    expect(connectParty).toHaveBeenCalledOnce();
+  });
+  it.each(['This party is full.', 'This game has started.', 'This party has closed.'])(
+    'stops automatic rejoin retries with useful feedback: %s',
+    async (message) => {
+      vi.mocked(partyApi.current).mockRejectedValue(
+        new ApiError('Connection expired.', 403, 'membership_expired'),
+      );
+      vi.mocked(partyApi.join).mockRejectedValue(new ApiError(message, 409, 'unavailable'));
+      page();
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      fireEvent.focus(window);
+      await act(async () => {});
+      expect(partyApi.join).toHaveBeenCalledOnce();
+      expect(connectParty).not.toHaveBeenCalled();
+      expect(screen.getByRole('link', { name: 'Return Home' })).toBeInTheDocument();
+    },
+  );
+  it('does not automatically rejoin an intentionally departed player', async () => {
+    vi.mocked(partyApi.current).mockRejectedValue(new ApiError('Join first.', 404));
+    page();
+    await screen.findByRole('heading', { name: 'Join Party K7M2Q9' });
+    expect(partyApi.join).not.toHaveBeenCalled();
+  });
+  it('copies the complete visible invite using an accessible compact icon', async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    page();
+    const copy = await screen.findByRole('button', { name: 'Copy invite link' });
+    expect(copy).toHaveAttribute('title', 'Copy invite link');
+    expect(copy).toHaveTextContent('');
+    await user.click(copy);
+    expect(write).toHaveBeenCalledWith(window.location.origin + '/party/K7M2Q9');
+    expect(await screen.findByText('Link copied')).toHaveAttribute('role', 'status');
+    expect(
+      screen.getByRole('link', { name: window.location.origin + '/party/K7M2Q9' }),
+    ).toBeVisible();
+  });
+  it('explains clipboard failure without hiding the invite', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Denied'));
+    page();
+    await user.click(await screen.findByRole('button', { name: 'Copy invite link' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('copy it manually');
+  });
+  it('keeps intermission controls host-only and prevents duplicate in-flight actions', async () => {
+    const user = userEvent.setup();
+    current = active();
+    current.round!.status = 'results';
+    let finish!: (state: PartyState) => void;
+    vi.mocked(partyApi.next).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    page();
+    const next = await screen.findByRole('button', { name: 'Next Round' });
+    await user.click(next);
+    expect(next).toBeDisabled();
+    fireEvent.click(next);
+    expect(partyApi.next).toHaveBeenCalledOnce();
+    await act(async () => finish(current));
+    update({ ...current, me_id: 'friend' });
+    expect(screen.queryByRole('button', { name: 'Next Round' })).not.toBeInTheDocument();
+    expect(screen.getByText('Waiting for host…')).toBeInTheDocument();
+    update({ ...current, status: 'complete', winners: ['host'] });
+    expect(screen.queryByRole('button', { name: 'Next Round' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Return to Lobby' })).toBeInTheDocument();
+  });
   it('creates a guest party with the only two configurable game settings', async () => {
     const user = userEvent.setup();
     page('/party/new');
@@ -173,7 +385,7 @@ describe('Multiplayer parties', () => {
   });
   it('asks a new guest opening an invite link to join', async () => {
     const user = userEvent.setup();
-    vi.mocked(partyApi.current).mockRejectedValue(new ApiError('Join first.', 404));
+    vi.mocked(partyApi.current).mockRejectedValueOnce(new ApiError('Join first.', 404));
     page();
     await screen.findByRole('heading', { name: 'Join Party K7M2Q9' });
     await user.click(screen.getByRole('button', { name: 'Join Party' }));
@@ -277,7 +489,7 @@ describe('Multiplayer parties', () => {
     expect(screen.queryByRole('table', { name: 'Overall leaderboard' })).not.toBeInTheDocument();
     expect(screen.getByText('0 of 2 players solved')).toBeInTheDocument();
   });
-  it('receives round results and automatic new rounds with a cleared focused input', async () => {
+  it('receives round results and host-started new rounds with a cleared focused input', async () => {
     const user = userEvent.setup();
     current = active();
     page();
@@ -294,17 +506,18 @@ describe('Multiplayer parties', () => {
           category: 'Places',
           attribution: 'Original drawing',
         },
-        next_starts_at: new Date(Date.parse(current.server_now) + 5000).toISOString(),
+        next_starts_at: null,
       },
     });
     expect(screen.getByRole('heading', { name: 'Round 1 results' })).toHaveFocus();
     expect(screen.getByText('lighthouse')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Round ranking' })).toBeInTheDocument();
-    update({
-      ...current,
-      round: { ...active().round!, id: 'round-two', number: 2, status: 'countdown' },
-    });
-    expect(screen.getByRole('heading', { name: 'Get ready' })).toHaveFocus();
+    expect(screen.getByRole('region', { name: 'Round and overall standings' })).toContainElement(
+      screen.getByRole('table', { name: 'Overall leaderboard' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Next Round' }));
+    expect(partyApi.next).toHaveBeenCalledWith('K7M2Q9', 'round-one', expect.any(String));
+    expect(await screen.findByRole('heading', { name: 'Get ready' })).toHaveFocus();
     expect(screen.queryByLabelText('Your Guess')).not.toBeInTheDocument();
     update({ ...current, round: { ...current.round!, status: 'active' } });
     expect(screen.getByLabelText('Your Guess')).toHaveFocus();

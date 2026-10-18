@@ -39,7 +39,6 @@ from .services import (
 
 MAX_PLAYERS = 12
 COUNTDOWN_SECONDS = 3
-RESULT_SECONDS = 5
 PRESENCE_SECONDS = 15
 RECONNECT_GRACE_SECONDS = 15
 END_MESSAGES = {
@@ -289,7 +288,7 @@ def create_party(request, data):
     return party.code
 
 
-def join_party(request, code):
+def join_party(request, code, *, automatic=False):
     check_access(request)
     # Commit due terminal transitions even if joining is subsequently rejected.
     with transaction.atomic():
@@ -297,6 +296,16 @@ def join_party(request, code):
         advance(party, timezone.now())
     with transaction.atomic():
         party = lock_party(code)
+        if automatic:
+            existing = party.members.filter(identity_filter(request)).first()
+            if (
+                not existing
+                or existing.banned_at
+                or (existing.left_at and existing.departure_reason != "disconnected")
+            ):
+                # Re-check the reason under the writer lock: an automatic recovery cannot undo
+                # a host kick or intentional leave, even if another tab raced the initial read.
+                member_for(party, request)
         add_member(party, request, timezone.now())
     return party.code
 
@@ -509,27 +518,32 @@ def advance(party, now):
             finish(party, game_round, now)
         if not game_round.ended_at or party.status == Party.Status.COMPLETE:
             return
-        next_at = game_round.ended_at + timedelta(seconds=RESULT_SECONDS)
-        if now < next_at:
-            return
         if game_round.number == game_round.match.party_round_limit:
             party.status = Party.Status.COMPLETE
             changed(party)
-            return
-        target = game_round.match.rounds.select_related("match").get(number=game_round.number + 1)
-        try:
-            activate(
-                party,
-                target,
-                (now if party.message else next_at) + timedelta(seconds=COUNTDOWN_SECONDS),
-            )
-        except GameError as exc:
-            message = str(exc.detail["detail"])
-            if party.message != message:
-                party.message = message
-                changed(party)
+        # An ended non-final round is the durable intermission. Only a host command advances it.
+        return
+
+
+def next_party(request, code, request_id, round_id):
+    party_state(request, code, heartbeat=True)
+    with transaction.atomic():
+        party = lock_party(code)
+        member = member_for(party, request)
+        require_host(party, member)
+        if command_seen(party, member, "next", request_id):
             return
         game_round = current_round(party)
+        if (
+            party.status != Party.Status.PLAYING
+            or not game_round
+            or game_round.pk != round_id
+            or not game_round.ended_at
+            or game_round.number >= game_round.match.party_round_limit
+        ):
+            raise GameError("This round is not awaiting advancement.", "round_not_ready")
+        target = game_round.match.rounds.select_related("match").get(number=game_round.number + 1)
+        activate(party, target, timezone.now() + timedelta(seconds=COUNTDOWN_SECONDS))
 
 
 def touch(request, code):
@@ -727,7 +741,7 @@ def payload(party, member, now):
         "rules": {
             "max_players": MAX_PLAYERS,
             "countdown_seconds": COUNTDOWN_SECONDS,
-            "results_seconds": RESULT_SECONDS,
+            "results_seconds": None,
             "wrong_penalty": 50,
             "cooldown_seconds": 2,
         },
@@ -801,9 +815,7 @@ def payload(party, member, now):
         else "active",
         "started_at": game_round.reveal_started_at.isoformat(),
         "reveal_finishes_at": deadline.isoformat(),
-        "next_starts_at": (game_round.ended_at + timedelta(seconds=RESULT_SECONDS)).isoformat()
-        if game_round.ended_at and party.status != Party.Status.COMPLETE
-        else None,
+        "next_starts_at": None,
         "grid_size": game_round.grid_size,
         "revealed_count": count,
         "total_tiles": game_round.grid_size**2,

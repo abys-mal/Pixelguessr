@@ -10,6 +10,7 @@ from .party_serializers import (
     PartyActionSerializer,
     PartyGuessSerializer,
     PartyKickSerializer,
+    PartyNextSerializer,
     PartySettingsSerializer,
 )
 from .reveal import render_reveal
@@ -47,7 +48,7 @@ class PartyJoinView(SingleplayerView):
     def post(self, request, code):
         serializer = JoinPartySerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        parties.join_party(request, code)
+        parties.join_party(request, code, **serializer.validated_data)
         return Response(parties.party_state(request, code))
 
 
@@ -59,6 +60,11 @@ class PartyActionView(SingleplayerView):
         if action == "leave":
             parties.leave_party(request, code)
             return Response(status=204)
+        if action == "next":
+            serializer = PartyNextSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            parties.next_party(request, code, **serializer.validated_data)
+            return Response(parties.party_state(request, code))
         serializer = PartyActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         handler = {"start": parties.start_party, "lobby": parties.lobby_party}[action]

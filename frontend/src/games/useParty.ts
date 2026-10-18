@@ -10,6 +10,10 @@ export function useParty(code: string) {
   const [accessCode, setAccessCode] = useState('');
   const terminated = useRef(false);
   const [connection, setConnection] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const connectedOnce = useRef(false);
+  const automaticJoinAttempted = useRef(false);
+  const [transportVersion, setTransportVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [now, setNow] = useState(0);
@@ -59,6 +63,21 @@ export function useParty(code: string) {
     let disposed = false;
     let reading = false;
     let online = false;
+    const startStream = () => {
+      if (!stream.current && !terminated.current)
+        stream.current = connectParty(
+          code,
+          accept,
+          (connected) => {
+            if (disposed) return;
+            online = connected;
+            setConnection(connected);
+            setReconnecting(!connected && connectedOnce.current);
+            if (connected) connectedOnce.current = true;
+          },
+          denyAccess,
+        );
+    };
     const read = async () => {
       if (disposed || reading || terminated.current) return;
       reading = true;
@@ -67,18 +86,37 @@ export function useParty(code: string) {
         if (disposed) return;
         accept(next);
         setError('');
-        if (!stream.current && !terminated.current)
-          stream.current = connectParty(
-            code,
-            accept,
-            (connected) => {
-              online = connected;
-              if (!disposed) setConnection(connected);
-            },
-            denyAccess,
-          );
+        startStream();
       } catch (err) {
         if (disposed) return;
+        if (
+          err instanceof ApiError &&
+          err.code === 'membership_expired' &&
+          !latest.current &&
+          !automaticJoinAttempted.current
+        ) {
+          automaticJoinAttempted.current = true;
+          try {
+            const next = await partyApi.join(code, true);
+            if (disposed) return;
+            terminated.current = false;
+            accept(next);
+            setError('');
+            startStream();
+          } catch (joinError) {
+            if (disposed) return;
+            denyAccess(
+              joinError instanceof ApiError
+                ? joinError
+                : new ApiError(
+                    'Unable to rejoin this party. Check your connection and try again.',
+                    503,
+                    'membership_expired',
+                  ),
+            );
+          }
+          return;
+        }
         if (err instanceof ApiError && (err.status === 403 || err.status === 410)) denyAccess(err);
         else if (err instanceof ApiError && err.status === 404) setJoinNeeded(true);
         else {
@@ -114,7 +152,7 @@ export function useParty(code: string) {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [code, accept, denyAccess]);
+  }, [code, accept, denyAccess, transportVersion]);
   const perform = async (key: string, action: (requestId: string) => Promise<PartyState>) => {
     if (lock.current) return false;
     lock.current = true;
@@ -146,17 +184,35 @@ export function useParty(code: string) {
     joinNeeded,
     error,
     connection,
+    reconnecting,
     accessCode,
     busy,
     feedback,
     now,
-    join: () => perform('join', () => partyApi.join(code)),
+    async join() {
+      const joined = await perform('join', async () => {
+        const next = await partyApi.join(code);
+        terminated.current = false;
+        setAccessCode('');
+        connectedOnce.current = false;
+        setReconnecting(false);
+        return next;
+      });
+      if (joined) setTransportVersion((version) => version + 1);
+      return joined;
+    },
     kick: (target: string, ban: boolean) =>
       perform(`kick:${target}:${ban}`, (id) => partyApi.kick(code, target, ban, id)),
     settings: (settings: PartyState['settings']) =>
       perform('settings', () => partyApi.settings(code, settings)),
     action: (action: 'start' | 'lobby') =>
       perform(`${action}:${state?.match_id}`, (id) => partyApi.action(code, action, id)),
+    next: () => {
+      const round = latest.current?.round;
+      return round
+        ? perform(`next:${round.id}`, (id) => partyApi.next(code, round.id, id))
+        : Promise.resolve(false);
+    },
     async guess(text: string) {
       const round = latest.current?.round;
       if (
