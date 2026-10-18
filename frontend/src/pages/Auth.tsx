@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, ApiError, type ClosureDetails } from '../api';
 import { useAuth } from '../auth/context';
 import { PageHeading, StatusMessage } from '../components/ui';
 import { UsernameRequirements } from '../components/UsernameRequirements';
+import { Dialog } from '../moderation/components';
+import { noticeDate } from '../components/notices';
 
 export function AuthPage({ register = false }: { register?: boolean }) {
-  const { user, refresh, loading } = useAuth();
+  const { user, refresh, loading, dismissClosure } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [closure, setClosure] = useState<ClosureDetails | null>(null);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   if (loading) return <StatusMessage>Checking your session…</StatusMessage>;
@@ -19,6 +22,8 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     event.preventDefault();
     if (request.current) return;
     setError('');
+    dismissClosure?.();
+    setClosure(null);
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form));
     if (register && data.password !== data.password_confirm) {
@@ -43,7 +48,14 @@ export function AuthPage({ register = false }: { register?: boolean }) {
       form.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach((input) => {
         input.value = '';
       });
-      setError(error instanceof Error ? error.message : 'Unable to sign in.');
+      if (
+        !register &&
+        error instanceof ApiError &&
+        error.code === 'account_closed' &&
+        error.closure
+      )
+        setClosure(error.closure);
+      else setError(error instanceof Error ? error.message : 'Unable to sign in.');
     } finally {
       if (!controller.signal.aborted) {
         request.current = null;
@@ -126,6 +138,31 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           </Link>
         </p>
       </form>
+      {closure && (
+        <Dialog title="Account closed" close={() => setClosure(null)}>
+          <div className="closure-login-content">
+            <p>This account has been closed and can no longer be used to sign in.</p>
+            <dl className="closure-login-details">
+              <div>
+                <dt>Reason</dt>
+                <dd>{closure.reason || 'No reason provided.'}</dd>
+              </div>
+              <div>
+                <dt>Issued</dt>
+                <dd>
+                  <time dateTime={closure.issued_at}>{noticeDate(closure.issued_at)}</time>
+                </dd>
+              </div>
+            </dl>
+            <p className="muted">
+              If you believe this closure was made in error, you may contact support.
+            </p>
+            <button className="button secondary" type="button" onClick={() => setClosure(null)}>
+              Close
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

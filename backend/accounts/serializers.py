@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 
 from games.ranked_rules import tier
 
@@ -128,25 +129,36 @@ class RegisterSerializer(serializers.ModelSerializer):
         return User.objects.create_user(**validated_data)
 
 
+class ClosedAccountLogin(APIException):
+    status_code = 400
+
+    def __init__(self, closure):
+        super().__init__(
+            {
+                "code": "account_closed",
+                "detail": "Your account has been closed.",
+                "closure": {
+                    "reason": closure.reason or "No reason provided.",
+                    "issued_at": closure.starts_at.isoformat(),
+                },
+            }
+        )
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=128)
 
     def validate(self, attrs):
-        user = authenticate(request=self.context["request"], **attrs)
+        user = authenticate(request=self.context["request"], include_closed=True, **attrs)
         if not user:
-            # Closure status is disclosed only after verifying the supplied password.
-            candidate = User.objects.filter(username=attrs["username"]).first()
-            if candidate and candidate.check_password(attrs["password"]):
-                from moderation.services import active_sanctions
-
-                if active_sanctions(candidate).filter(kind="closed").exists():
-                    raise serializers.ValidationError("Your account has been closed.")
             raise serializers.ValidationError("Invalid username or password.")
-        from moderation.services import account_restrictions
+        from moderation.services import active_sanctions
 
-        if account_restrictions(user)["blocked"]:
-            raise serializers.ValidationError("Your account has been closed.")
+        # authenticate has verified the password, but no session exists yet.
+        closure = active_sanctions(user).filter(kind="closed").order_by("-starts_at", "-pk").first()
+        if closure:
+            raise ClosedAccountLogin(closure)
         return {"user": user}
 
 

@@ -12,6 +12,7 @@ export interface Player {
   rating: number;
   date_joined: string;
   is_active: boolean;
+  closed?: boolean;
   protected: boolean;
   moderator: boolean;
   can_remove_moderator?: boolean;

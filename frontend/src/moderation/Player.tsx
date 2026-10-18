@@ -309,7 +309,7 @@ export function PlayerDetail({ id }: { id: string }) {
               {date(s.starts_at)} · {expiry(s)}
               {s.acknowledged_at ? ' · Acknowledged' : ''}
             </p>
-            {canAct && (user?.administrator || s.kind !== 'closed') && (
+            {canAct && s.kind !== 'closed' && (
               <div className="mod-actions">
                 {canSanction && (
                   <button className="mod-button subtle" onClick={() => setForm(s)}>

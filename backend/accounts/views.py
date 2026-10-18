@@ -55,6 +55,7 @@ class RegisterView(APIView):
 
 
 @method_decorator(csrf_protect, name="dispatch")
+@method_decorator(never_cache, name="dispatch")
 class LoginView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]

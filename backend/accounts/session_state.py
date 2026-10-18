@@ -12,7 +12,7 @@ def session_payload(request):
 
         if not active_sanctions(user).filter(kind="closed").exists():
             return {"user": None, "restrictions": None}
-        return {
+        payload = {
             "user": None,
             "restrictions": None,
             "account_closed": True,
@@ -20,4 +20,10 @@ def session_payload(request):
             if active_sanctions(user).filter(kind="closed", origin="voluntary").exists()
             else "Your account has been closed.",
         }
+        # Consume the invalidated identity once, including for account sockets.
+        # Later visits must be anonymous rather than repeating the closure banner.
+        from django.contrib.auth import logout
+
+        logout(request)
+        return payload
     return {"user": UserSerializer(user).data, "restrictions": restrictions}

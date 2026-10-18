@@ -241,12 +241,12 @@ it('edits reviewed labels and uses the real reveal endpoint', async () => {
   const dialog = within(screen.getByRole('dialog'));
   expect(dialog.getByRole('img', { name: '200 of 400 tiles revealed' })).toHaveAttribute(
     'src',
-    photo.preview_url + '?reveal=200',
+    expect.stringMatching(new RegExp('^' + photo.preview_url + '\\?reveal=200&run=')),
   );
   fireEvent.change(dialog.getByRole('slider'), { target: { value: '400' } });
   expect(dialog.getByRole('img', { name: '400 of 400 tiles revealed' })).toHaveAttribute(
     'src',
-    photo.preview_url + '?reveal=400',
+    expect.stringMatching(new RegExp('^' + photo.preview_url + '\\?reveal=400&run=')),
   );
   expect(dialog.getByLabelText('Category')).toHaveValue('2');
   await userEvent.clear(dialog.getByLabelText('Canonical answer'));

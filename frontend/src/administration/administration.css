@@ -160,6 +160,14 @@
   color: var(--mod-muted);
   margin-bottom: 12px;
 }
+.admin-gameplay-preview .mod-actions {
+  align-items: flex-end;
+  margin: 16px 0;
+}
+.admin-gameplay-preview .mod-actions > label {
+  display: grid;
+  gap: 8px;
+}
 .admin-large-preview {
   display: block;
   width: 100%;

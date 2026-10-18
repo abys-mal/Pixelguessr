@@ -13,7 +13,7 @@ export function SanctionBanner() {
       <div>
         <h2>
           {notice.kind === 'suspension'
-            ? 'Multiplayer suspension'
+            ? 'Suspension'
             : notice.kind === 'probation'
               ? 'Account probation'
               : 'Account warning'}

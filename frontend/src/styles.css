@@ -2306,6 +2306,54 @@ main {
   align-items: center;
   gap: 7px;
 }
+.profile-report-button:disabled {
+  background: var(--panel);
+  border-color: var(--muted);
+  color: var(--muted);
+  pointer-events: none;
+}
+.profile-report-action {
+  position: relative;
+  display: inline-flex;
+}
+.profile-report-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  box-shadow: 0 8px 24px #0005;
+}
+.closure-login-content {
+  display: grid;
+  gap: 20px;
+}
+.closure-login-content p {
+  margin: 0;
+}
+.closure-login-details {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+.closure-login-details dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.closure-login-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .profile-report-feedback {
   display: block;
   font-size: 13px;

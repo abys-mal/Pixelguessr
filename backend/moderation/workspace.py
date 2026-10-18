@@ -88,6 +88,13 @@ def eligibility(user, sanction):
 
 
 def _reverse(actor, sanction):
+    if sanction.kind == Sanction.Kind.CLOSED:
+        raise ValidationError({"detail": "Use Administrator Controls to reopen a closed account."})
+    _record_reversal(actor, sanction)
+
+
+def _record_reversal(actor, sanction):
+    """Persist an authorized reversal; reopening authorizes in Administrator Controls."""
     sanction.revoked_at = timezone.now()
     sanction.revoked_by = actor
     sanction.save(update_fields=["revoked_at", "revoked_by"])
@@ -305,8 +312,11 @@ def change_names(actor, user_id, data):
 @transaction.atomic
 def submit_report(actor, subject, category, details):
     reporter = lock_player(actor.pk)
-    if account_restrictions(reporter)["blocked"]:
+    restrictions = account_restrictions(reporter)
+    if restrictions["blocked"]:
         raise PermissionDenied("Sign in with an account that can access this feature.")
+    if restrictions["suspension"]:
+        raise PermissionDenied("Reporting is unavailable while your account is suspended.")
     subject = get_object_or_404(User, pk=subject.pk)
     if reporter.pk == subject.pk:
         raise ValidationError({"subject": "You cannot report yourself."})

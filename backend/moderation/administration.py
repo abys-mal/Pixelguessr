@@ -17,7 +17,7 @@ from .enforcement import schedule
 from .models import Activity, StaffAnnouncement
 from .permissions import is_administrator
 from .services import account_restrictions, active_sanctions
-from .workspace import change_access, lock_player, reverse
+from .workspace import _record_reversal, change_access, lock_player
 
 
 def require_administrator(actor):
@@ -71,7 +71,7 @@ def manage_player(actor, pk, operation, data):
             raise ValidationError({"detail": "This account has no active closure."})
         before = {"closures": [str(item.pk) for item in closures]}
         for closure in closures:
-            reverse(actor, closure.pk)
+            _record_reversal(actor, closure)
         after = {"closures": [], "message": "Your account has been reopened."}
     elif operation == "title":
         value = data["title"]

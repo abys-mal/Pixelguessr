@@ -311,11 +311,17 @@ class ImagePreview(AdministratorView):
             count = serializers.IntegerField(min_value=0, max_value=400).run_validation(
                 request.query_params["reveal"]
             )
-            # Stable row-major order makes the actual compositor easy to inspect at each step.
+            import random
+
+            # Shuffle once per run, just as gameplay does; the same seed reconstructs
+            # its prefix for every frame without retaining preview state on the server.
+            seed = serializers.UUIDField().run_validation(request.query_params.get("run", str(pk)))
+            order = list(range(400))
+            random.Random(str(seed)).shuffle(order)
             game_round = Round(
                 image_storage_name=image.image_file.name,
                 grid_size=20,
-                reveal_order=list(range(400)),
+                reveal_order=order,
             )
             content, _ = render_reveal(game_round, timezone.now(), count=count)
             response = HttpResponse(content, content_type="image/webp")

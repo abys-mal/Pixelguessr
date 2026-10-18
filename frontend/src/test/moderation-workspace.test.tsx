@@ -383,6 +383,46 @@ it('prepopulates replacements and preserves closure restriction controls', async
   expect(seen.some(([path]) => path.endsWith('/warning-id/replace/'))).toBe(true);
 });
 
+it.each(['warning', 'probation', 'suspension'])(
+  'retains ordinary management actions for %s',
+  async (kind) => {
+    warning.kind = kind;
+    page('/moderation/players/player-id');
+    expect(await screen.findByRole('button', { name: 'Replace sanction' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reverse sanction' })).toBeInTheDocument();
+  },
+);
+
+it.each(['', 'Reviewed the closure evidence.'])(
+  'keeps closure records and the administrator reopen workflow with optional reason: %s',
+  async (reason) => {
+    current.user = { ...moderator, administrator: true };
+    warning.kind = 'closed';
+    warning.reason = 'Original account closure reason';
+    warning.expires_at = null;
+    page('/moderation/players/player-id');
+    const reopen = await screen.findByRole('button', { name: 'Reopen closed account' });
+    expect(screen.getByText('Original account closure reason')).toBeInTheDocument();
+    expect(screen.getByText(/Permanent/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replace sanction' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reverse sanction' })).not.toBeInTheDocument();
+    await userEvent.click(reopen);
+    const dialog = within(screen.getByRole('dialog', { name: 'Reopen closed account?' }));
+    const reasonField = dialog.getByLabelText('Reason (optional)');
+    expect(reasonField).not.toBeRequired();
+    fireEvent.change(reasonField, { target: { value: reason } });
+    await userEvent.click(dialog.getByRole('button', { name: 'Confirm change' }));
+    await screen.findByText('Administrator changes saved.');
+    const request = seen.find(
+      ([path, options]) =>
+        path.endsWith('/administration/players/player-id/') && options?.method === 'POST',
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({ operation: 'reopen', reason });
+    expect(warning.reason).toBe('Original account closure reason');
+    expect(seen.some(([path]) => /\/warning-id\/(reverse|replace)\//.test(path))).toBe(false);
+  },
+);
+
 it('makes reversal deliberate and cancellation performs no mutation', async () => {
   page('/moderation/players/player-id');
   await userEvent.click(await screen.findByRole('button', { name: 'Reverse sanction' }));
@@ -580,6 +620,29 @@ it.each(['probation', 'suspension'])(
       within(region).queryByRole('button', { name: 'Appeal this sanction' }),
     ).not.toBeInTheDocument();
     expect(within(region).queryByText('Staff context.')).not.toBeInTheDocument();
+  },
+);
+
+it.each(['closed', 'open', 'suspension', 'probation', 'inactive'])(
+  'shows a red Closed badge only for authoritative closure: %s',
+  async (state) => {
+    const original = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (path, options) =>
+      path.startsWith('/api/moderation/workspace/players/?')
+        ? pageData([{ ...player, closed: state === 'closed', is_active: state !== 'inactive' }])
+        : original(path, options),
+    );
+    page('/moderation/players');
+    const link = await screen.findByRole('link', { name: /@pixelplayer/ });
+    expect(link).toHaveAttribute('href', '/moderation/players/player-id');
+    if (state === 'closed') {
+      const badge = within(link).getByText('Closed');
+      expect(badge).toHaveClass('mod-chip');
+      expect(badge.closest('strong')).toHaveTextContent('@pixelplayer');
+      expect(badge).toHaveClass('closed');
+    } else expect(within(link).queryByText('Closed')).not.toBeInTheDocument();
+    fireEvent.click(link);
+    expect(await screen.findByRole('button', { name: 'Issue sanction' })).toBeInTheDocument();
   },
 );
 

@@ -6,6 +6,7 @@ export interface AuthState extends Session {
   error: string;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
+  dismissClosure?: () => void;
 }
 export const AuthContext = createContext<AuthState | null>(null);
 export function useAuth() {

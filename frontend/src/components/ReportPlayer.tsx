@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { useAuth } from '../auth/context';
@@ -7,15 +7,27 @@ import { Dialog, Feedback } from '../moderation/components';
 import { ActionIcon } from './ActionIcon';
 
 export function ReportPlayer({ id, username }: { id: string; username: string }) {
-  const { user } = useAuth();
+  const { user, restrictions } = useAuth();
+  const suspensionHelp = useId();
+  const suspended = !!restrictions?.suspension;
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [tooltipLeft, setTooltipLeft] = useState<number | null>(null);
+  if (suspended && open) setOpen(false);
   if (!user || user.id === id) return null;
+  const showSuspensionHelp = (event: SyntheticEvent<HTMLSpanElement>) => {
+    if (!suspended) return;
+    const { left } = event.currentTarget.getBoundingClientRect();
+    // Keep the overlay inside the viewport even beside a long username.
+    setTooltipLeft(
+      Math.max(12 - left, Math.min(0, document.documentElement.clientWidth - left - 272)),
+    );
+  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || suspended) return;
     const form = new FormData(event.currentTarget);
     setPending(true);
     setError('');
@@ -38,23 +50,54 @@ export function ReportPlayer({ id, username }: { id: string; username: string })
   };
   return (
     <>
-      <button
-        className="button compact secondary profile-report-button"
-        type="button"
-        onClick={() => {
-          setError('');
-          setMessage('');
-          setOpen(true);
+      <span
+        className="profile-report-action"
+        role={suspended ? 'group' : undefined}
+        tabIndex={suspended ? 0 : undefined}
+        aria-label={suspended ? 'Report unavailable' : undefined}
+        aria-describedby={suspended ? suspensionHelp : undefined}
+        onMouseEnter={showSuspensionHelp}
+        onMouseLeave={(event) => {
+          if (!event.currentTarget.contains(document.activeElement)) setTooltipLeft(null);
+        }}
+        onFocus={showSuspensionHelp}
+        onBlur={() => setTooltipLeft(null)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setTooltipLeft(null);
         }}
       >
-        <ActionIcon name="triangle-alert" /> Report
-      </button>
+        <button
+          className="button compact secondary profile-report-button"
+          type="button"
+          disabled={suspended}
+          aria-describedby={suspended ? suspensionHelp : undefined}
+          onClick={() => {
+            setError('');
+            setMessage('');
+            setOpen(true);
+          }}
+        >
+          <ActionIcon name="triangle-alert" /> Report
+        </button>
+        {suspended && (
+          <span
+            id={suspensionHelp}
+            className="profile-report-tooltip"
+            role="tooltip"
+            hidden={tooltipLeft === null}
+            style={{ left: tooltipLeft ?? 0 }}
+          >
+            Reporting is unavailable while your account is suspended.
+          </span>
+        )}
+      </span>
       {message && (
         <span className="profile-report-feedback" role="status">
           {message}
         </span>
       )}
       {open &&
+        !suspended &&
         createPortal(
           <Dialog title={`Report @${username}`} close={() => setOpen(false)} pending={pending}>
             <p>Your report is shared with staff, not the reported player.</p>

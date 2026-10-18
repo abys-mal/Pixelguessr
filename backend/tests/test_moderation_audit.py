@@ -105,14 +105,14 @@ def test_reports_require_authentication_and_real_session_csrf(user, staff):
     )
 
 
-@pytest.mark.parametrize("kind", ["warning", "suspension", "closed"])
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
 def test_restricted_users_cannot_submit_reports(client, user, staff, kind):
     notice(user, staff, kind)
     client.force_authenticate(user)
     assert client.post(BASE + "reports/", report_body(staff), format="json").status_code == (
-        403 if kind == "closed" else 201
+        403 if kind in {"suspension", "closed"} else 201
     )
-    assert Report.objects.exists() == (kind != "closed")
+    assert Report.objects.exists() == (kind not in {"suspension", "closed"})
 
 
 def test_report_admin_permissions_resolution_and_audit(client, user, staff):
@@ -210,7 +210,7 @@ def test_scheduled_expired_and_revoked_sanctions(client, user, staff, monkeypatc
     assert Sanction.objects.get(pk=suspension.pk).issued_by_id == staff.pk
 
 
-def test_closure_revoke_batch_is_atomic_and_admin_only(client, user, staff):
+def test_closure_revoke_batch_requires_administrator_reopen(client, user, staff):
     staff = grant(staff, "moderation.change_sanction", "moderation.view_sanction")
     closed = notice(user, staff, "closed")
     warning = notice(user, staff)
@@ -234,10 +234,19 @@ def test_closure_revoke_batch_is_atomic_and_admin_only(client, user, staff):
     assert (
         client.post(
             "/admin/moderation/sanction/",
-            {"action": "revoke", "index": "0", "_selected_action": str(closed.pk)},
+            {
+                "action": "revoke",
+                "index": "0",
+                "_selected_action": [str(warning.pk), str(closed.pk)],
+            },
         ).status_code
-        == 302
+        == 403
     )
+    assert account_restrictions(user)["blocked"]
+    assert not Sanction.objects.filter(revoked_at__isnull=False).exists()
+    from moderation.administration import manage_player
+
+    manage_player(staff, user.pk, "reopen", {"reason": "Checked the closure"})
     assert not account_restrictions(user)["blocked"]
     assert Sanction.objects.count() == 2
 

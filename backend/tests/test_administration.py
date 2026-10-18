@@ -249,7 +249,7 @@ def test_rating_override_does_not_modify_active_duel_snapshots(administrator, us
         manage_player(administrator, user.pk, "rating", {"rating": 1200, "reason": "Wait"})
 
 
-def test_reopen_retains_other_sanctions_and_emits_safe_notice(client, administrator, user):
+def test_reopen_retains_other_sanctions_without_player_update(client, administrator, user):
     closure = issue(
         administrator,
         user.pk,
@@ -263,7 +263,9 @@ def test_reopen_retains_other_sanctions_and_emits_safe_notice(client, administra
     assert not account_restrictions(user)["blocked"] and account_restrictions(user)["probation"]
     authenticate(client, user)
     body = client.get("/api/moderation/notices/").json()
-    assert "reopened" in body["updates"][0]["message"] and "PRIVATE" not in str(body)
+    assert body["updates"] == [] and "PRIVATE" not in str(body)
+    assert {row["id"] for row in body["sanctions"]} == {str(closure.pk), str(probation.pk)}
+    assert Activity.objects.filter(user=user, action="admin_reopen").exists()
 
 
 def test_titles_exclusive_replacement_removal_and_audit(client, administrator, user):

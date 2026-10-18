@@ -30,6 +30,10 @@ export interface Session {
   user: User | null;
   restrictions: Restrictions | null;
 }
+export interface ClosureDetails {
+  reason: string;
+  issued_at: string;
+}
 export interface Category {
   id: number;
   name: string;
@@ -55,6 +59,7 @@ export class ApiError extends Error {
     public status: number,
     public code?: string,
     public fields?: Record<string, string[]>,
+    public closure?: ClosureDetails,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -64,7 +69,7 @@ export class ApiError extends Error {
 function errorMessage(body: unknown, status: number): string {
   if (typeof body === 'object' && body !== null) {
     return Object.entries(body)
-      .filter(([key]) => key !== 'code' && key !== 'round' && key !== 'session' && key !== 'result')
+      .filter(([key]) => !['code', 'round', 'session', 'result', 'closure'].includes(key))
       .map(([key, value]) => {
         const content = Array.isArray(value) ? value.join(' ') : String(value);
         return ['detail', 'non_field_errors'].includes(key)
@@ -107,7 +112,20 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
             ),
           )
         : undefined;
-    throw new ApiError(errorMessage(body, response.status), response.status, code, fields);
+    const closure =
+      code === 'account_closed' &&
+      typeof body === 'object' &&
+      body !== null &&
+      'closure' in body &&
+      typeof body.closure === 'object' &&
+      body.closure !== null &&
+      'reason' in body.closure &&
+      typeof body.closure.reason === 'string' &&
+      'issued_at' in body.closure &&
+      typeof body.closure.issued_at === 'string'
+        ? { reason: body.closure.reason, issued_at: body.closure.issued_at }
+        : undefined;
+    throw new ApiError(errorMessage(body, response.status), response.status, code, fields, closure);
   }
   return body as T;
 }

@@ -61,7 +61,7 @@ class SanctionAdmin(admin.ModelAdmin):
             obj.save()
 
     @admin.action(
-        description="Revoke selected sanctions (closure requires administrator)",
+        description="Revoke selected ordinary sanctions",
         permissions=["change"],
     )
     def revoke(self, request, queryset):
@@ -80,11 +80,8 @@ class SanctionAdmin(admin.ModelAdmin):
                 )
             # Lock before mutable reads, including on SQLite; repeat actions are no-ops.
             queryset.update(revoked_at=F("revoked_at"))
-            if (
-                not request.user.is_superuser
-                and queryset.filter(kind=Sanction.Kind.CLOSED).exists()
-            ):
-                raise PermissionDenied("Only administrators can reverse closure.")
+            if queryset.filter(kind=Sanction.Kind.CLOSED).exists():
+                raise PermissionDenied("Use Administrator Controls to reopen a closed account.")
             for sanction in queryset.filter(revoked_at__isnull=True).order_by("pk"):
                 sanction.revoked_at = timezone.now()
                 sanction.revoked_by = request.user

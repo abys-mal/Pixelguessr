@@ -61,8 +61,9 @@ export function ModerationPlayers() {
                   {player.username.slice(0, 1).toUpperCase()}
                 </span>
                 <span>
-                  <strong>
+                  <strong className="mod-player-name">
                     <PlayerIdentity username={'@' + player.username} title={player.title} />
+                    {player.closed && <span className="mod-chip closed">Closed</span>}
                   </strong>
                   <small>
                     {player.display_name || 'Player'} · {player.rating} Elo

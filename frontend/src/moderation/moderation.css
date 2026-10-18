@@ -298,6 +298,12 @@
   display: block;
   margin-top: 3px;
 }
+.mod-player-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .mod-avatar {
   width: 44px;
   height: 44px;

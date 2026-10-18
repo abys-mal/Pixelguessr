@@ -433,21 +433,64 @@ def test_expired_type_does_not_block_new_sanction(moderator, user):
     assert user.sanctions.count() == 2
 
 
-def test_closure_reverse_and_replace_administrator_only(client, moderator, administrator, user):
-    closed = sanction(moderator, user, "closed")
-    authenticate(client, moderator)
-    for action in ["reverse", "replace"]:
-        assert (
-            client.post(
+def test_closure_changes_require_administrator_reopen(client, moderator, administrator, user):
+    closed = sanction(moderator, user, "closed", reason="Original public closure reason")
+    probation = sanction(moderator, user, "probation")
+    before = Activity.objects.count()
+    for actor, expected in [(moderator, 403), (administrator, 400)]:
+        authenticate(client, actor)
+        for action in ["reverse", "replace"]:
+            response = client.post(
                 ROOT + f"sanctions/{closed.pk}/{action}/", {"kind": "warning"}, format="json"
-            ).status_code
-            == 403
-        )
+            )
+            assert response.status_code == expected
+            if actor == administrator:
+                assert "Administrator Controls" in response.json()["detail"]
     closed.refresh_from_db()
-    assert not closed.revoked_at
+    assert not closed.revoked_at and closed.reason == "Original public closure reason"
+    assert user.sanctions.count() == 2 and Activity.objects.count() == before
+    assert account_restrictions(user)["blocked"]
     authenticate(client, administrator)
-    assert client.post(ROOT + f"sanctions/{closed.pk}/reverse/").status_code == 200
+    assert (
+        client.post(
+            ROOT + f"administration/players/{user.pk}/",
+            {"operation": "reopen", "reason": "Reviewed closure evidence"},
+            format="json",
+        ).status_code
+        == 200
+    )
+    closed.refresh_from_db()
+    probation.refresh_from_db()
+    assert closed.revoked_at and closed.revoked_by_id == administrator.pk
+    assert closed.reason == "Original public closure reason" and not probation.revoked_at
+    assert (
+        Activity.objects.get(user=user, action="admin_reopen").reason == "Reviewed closure evidence"
+    )
+    assert Activity.objects.filter(sanction=closed, action="sanction_reversed").count() == 1
     assert not account_restrictions(user)["blocked"]
+    rows = client.get(ROOT + f"players/{user.pk}/").json()["sanctions"]
+    assert any(row["id"] == str(closed.pk) and row["reason"] == closed.reason for row in rows)
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension"])
+@pytest.mark.parametrize("action", ["replace", "reverse"])
+@pytest.mark.parametrize("administrator_actor", [False, True])
+def test_ordinary_sanction_actions_remain_available(
+    client, moderator, administrator, user, kind, action, administrator_actor
+):
+    original = sanction(moderator, user, kind)
+    actor = administrator if administrator_actor else moderator
+    authenticate(client, actor)
+    response = client.post(
+        ROOT + f"sanctions/{original.pk}/{action}/",
+        {"kind": kind, "category": "fair_play", "reason": "Updated reason"},
+        format="json",
+    )
+    assert response.status_code == (201 if action == "replace" else 200)
+    original.refresh_from_db()
+    assert original.revoked_at and original.revoked_by_id == actor.pk
+    if action == "replace":
+        assert Sanction.objects.get(pk=response.json()["id"]).replaces_id == original.pk
 
 
 def test_replace_is_linked_and_marks_appeal_changed(moderator, user):

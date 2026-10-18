@@ -7,6 +7,7 @@ import { useData } from '../moderation/useData';
 import { adminRoot, send, type LibraryImage } from './api';
 import { DeleteImage } from './DeleteImage';
 import { PlayerSubmissions, ImageLibraryTabs } from './PlayerSubmissions';
+import { GameplayPreview } from './GameplayPreview';
 
 export function ImageEditor({
   image,
@@ -27,7 +28,6 @@ export function ImageEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [reveal, setReveal] = useState(200);
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
@@ -127,26 +127,7 @@ export function ImageEditor({
           </dl>
           <pre>{JSON.stringify(current.import_metadata, null, 2)}</pre>
         </details>
-        <section>
-          <h3>Gameplay reveal preview</h3>
-          <p className="mod-muted">Rendered by the actual server-side tile compositor.</p>
-          <label>
-            Revealed tiles: {reveal} / 400
-            <input
-              type="range"
-              min="0"
-              max="400"
-              step="20"
-              value={reveal}
-              onChange={(e) => setReveal(Number(e.target.value))}
-            />
-          </label>
-          <img
-            className="admin-large-preview"
-            src={`${current.preview_url}?reveal=${reveal}`}
-            alt={`${reveal} of 400 tiles revealed`}
-          />
-        </section>
+        <GameplayPreview key={current.id} url={current.preview_url} />
       </div>
     </Dialog>
   );

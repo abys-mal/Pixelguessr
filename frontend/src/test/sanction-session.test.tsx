@@ -100,6 +100,10 @@ it.each(['warning', 'probation', 'suspension'] as const)(
     act(() => receive(notice(kind)));
     const banner = await screen.findByRole('status');
     expect(banner).toHaveTextContent(`${kind} public restriction explanation`);
+    if (kind === 'suspension') {
+      expect(screen.getByRole('heading', { name: /^Suspension$/ })).toBeInTheDocument();
+      expect(screen.queryByText('Multiplayer suspension')).not.toBeInTheDocument();
+    }
     expect(banner).toHaveTextContent('Expires');
     expect(screen.getByRole('link', { name: 'View details →' })).toHaveAttribute(
       'href',
@@ -139,6 +143,57 @@ it('replaces signed-in access with a clear closure message from a live event', a
   expect(await screen.findByRole('alert')).toHaveTextContent('Your account has been closed.');
   expect(screen.queryByRole('link', { name: /^player/ })).not.toBeInTheDocument();
   expect(stop).toHaveBeenCalled();
+});
+
+it.each(['dismiss', 'navigate', 'timeout'])(
+  'clears the closure banner after %s and does not restore it on refresh',
+  async (action) => {
+    const view = page();
+    await screen.findByRole('link', { name: /^player/ });
+    if (action === 'timeout') vi.useFakeTimers();
+    act(() => receive({ user: null, restrictions: null, account_closed: true }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Your account has been closed.');
+    if (action === 'dismiss')
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss account closure message' }));
+    else if (action === 'navigate') {
+      fireEvent.click(screen.getByRole('link', { name: 'About & rules' }));
+      fireEvent.click(screen.getByRole('link', { name: 'Pixelguessr home' }));
+    } else {
+      try {
+        act(() => vi.advanceTimersByTime(10000));
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    view.unmount();
+    vi.mocked(api).mockResolvedValue({ user: null, restrictions: null });
+    page();
+    await screen.findByRole('link', { name: 'Sign in' });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  },
+);
+
+it('does not carry a closure banner into another signed-in account', async () => {
+  function RefreshAccount() {
+    const { refresh } = useAuth();
+    return <button onClick={() => void refresh()}>Refresh session</button>;
+  }
+  render(
+    <MemoryRouter>
+      <AuthProvider>
+        <App />
+        <RefreshAccount />
+      </AuthProvider>
+    </MemoryRouter>,
+  );
+  await screen.findByRole('link', { name: /^player/ });
+  act(() => receive({ user: null, restrictions: null, account_closed: true }));
+  expect(screen.getByRole('alert')).toBeInTheDocument();
+  vi.mocked(api).mockResolvedValue({ ...clean, user: { ...user, id: 'other', username: 'other' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh session' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  expect(screen.getByRole('link', { name: /^other/ })).toBeInTheDocument();
 });
 
 it('ignores an old HTTP refresh when a newer account event has arrived', async () => {

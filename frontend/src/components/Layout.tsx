@@ -4,7 +4,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/context';
 
 export function Layout() {
-  const { user, error, refresh, account_closed, closure_message } = useAuth();
+  const { user, error, refresh, account_closed, closure_message, dismissClosure } = useAuth();
   const { pathname } = useLocation();
   const main = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -56,6 +56,9 @@ export function Layout() {
       {account_closed && (
         <div className="service-banner" role="alert">
           {closure_message || 'Your account has been closed.'}
+          <button onClick={dismissClosure} aria-label="Dismiss account closure message">
+            Dismiss
+          </button>
         </div>
       )}
       <main id="main" ref={main} tabIndex={-1}>
