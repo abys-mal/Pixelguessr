@@ -67,7 +67,7 @@ export function AdministrationOverview() {
             ['Active games', data.active_games],
             ['Approved images', data.playable_images],
             ['Pending player review', data.pending_player_submissions],
-            ['Pending import review', data.pending_images],
+            ['Pending', data.pending_images],
             ['Incomplete imports', data.incomplete_imports],
           ].map(([name, count]) => (
             <section className="mod-card" key={name}>

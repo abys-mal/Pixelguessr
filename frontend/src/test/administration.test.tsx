@@ -43,6 +43,7 @@ const photo = {
   license: 'Pexels License',
   attribution: 'Pexels',
   source_url: '',
+  source: 'manual',
   preview_url: root + 'images/photo-id/preview/',
   review_reason: '',
   import_metadata: { label_verified: false },
@@ -50,6 +51,8 @@ const photo = {
 let user: User;
 let calls: [string, RequestInit | undefined][];
 let notice: object | null;
+let images: (typeof photo)[];
+let rejectError: string;
 const page = (rows: unknown[]) => ({
   count: rows.length,
   next: null,
@@ -60,6 +63,10 @@ beforeEach(() => {
   user = { ...base };
   calls = [];
   notice = null;
+  images = [{ ...photo }];
+  rejectError = '';
+  URL.createObjectURL = vi.fn().mockReturnValue('blob:import-preview');
+  URL.revokeObjectURL = vi.fn();
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
     this.setAttribute('open', '');
   });
@@ -128,11 +135,22 @@ beforeEach(() => {
         ]);
       if (path.startsWith(root + 'players/?'))
         return page(path.includes('imagehunter') ? [player] : []);
-      if (path.startsWith(root + 'images/?')) return page([photo]);
-      if (path === root + 'images/photo-id/')
-        return { ...photo, ...JSON.parse(String(options?.body ?? '{}')) };
-      if (path === root + 'images/review/')
+      if (path.startsWith(root + 'images/?')) return page(images);
+      if (path === root + 'images/photo-id/') {
+        const changes = JSON.parse(String(options?.body ?? '{}'));
+        return {
+          ...photo,
+          ...changes,
+          import_metadata: { ...photo.import_metadata, photographer: changes.photographer ?? '' },
+        };
+      }
+      if (path === root + 'images/review/') {
+        if (rejectError)
+          return { results: [{ id: 'photo-id', status: 'failed', error: rejectError }] };
+        if (JSON.parse(String(options?.body)).operation === 'reject')
+          images = images.map((image) => ({ ...image, status: 'rejected' }));
         return { results: [{ id: 'photo-id', status: 'success' }] };
+      }
       if (path === root + 'announcement/') return { announcement: notice };
       if (path.startsWith(root + 'imports/batch-id/'))
         return page([
@@ -239,6 +257,7 @@ it('edits reviewed labels and uses the real reveal endpoint', async () => {
   show('/moderation/administration/images');
   await userEvent.click(await screen.findByRole('button', { name: 'Review image' }));
   const dialog = within(screen.getByRole('dialog'));
+  expect(dialog.queryByText(/Saving confirms you reviewed/)).not.toBeInTheDocument();
   expect(dialog.getByRole('img', { name: '200 of 400 tiles revealed' })).toHaveAttribute(
     'src',
     expect.stringMatching(new RegExp('^' + photo.preview_url + '\\?reveal=200&run=')),
@@ -252,7 +271,7 @@ it('edits reviewed labels and uses the real reveal endpoint', async () => {
   await userEvent.clear(dialog.getByLabelText('Canonical answer'));
   await userEvent.type(dialog.getByLabelText('Canonical answer'), 'garden rose');
   await userEvent.click(dialog.getByRole('button', { name: 'Save reviewed labels' }));
-  await dialog.findByText('Reviewed labels saved.');
+  await dialog.findByText('Reviewed labels and source metadata saved.');
   const write = calls.find(
     ([path, options]) => path === root + 'images/photo-id/' && options?.method === 'POST',
   );
@@ -260,6 +279,11 @@ it('edits reviewed labels and uses the real reveal endpoint', async () => {
     canonical_answer: 'garden rose',
     accepted_synonyms: ['pink rose'],
     category: 2,
+    source: 'manual',
+    source_url: '',
+    license: 'Pexels License',
+    attribution: 'Pexels',
+    photographer: '',
   });
 });
 it('bulk rejection accepts an optional reason and reports explicit outcomes', async () => {
@@ -282,6 +306,181 @@ it('resumes an incomplete batch and allows label preparation without approval', 
   expect(screen.getByLabelText('Choose images')).toHaveAttribute('multiple');
   await userEvent.click(screen.getByRole('button', { name: 'Prepare labels' }));
   expect(screen.getByRole('dialog', { name: 'Image detail' })).toBeInTheDocument();
+});
+it('removes individual selections by ID, adds more files and uploads only retained duplicate filenames', async () => {
+  show('/moderation/administration/imports/batch-id');
+  const input = await screen.findByLabelText('Choose images');
+  const first = new File(['one'], 'same.png', { type: 'image/png' });
+  const second = new File(['second'], 'same.png', { type: 'image/png' });
+  await userEvent.upload(input, [first, second]);
+  expect(screen.getByText('2 files selected')).toBeInTheDocument();
+  await userEvent.click(screen.getAllByRole('button', { name: 'Remove same.png' })[0]);
+  expect(screen.getByText('1 files selected')).toBeInTheDocument();
+  expect(URL.revokeObjectURL).toHaveBeenCalled();
+  await userEvent.upload(input, first);
+  expect(screen.getByText('2 files selected')).toBeInTheDocument();
+  await userEvent.click(screen.getAllByRole('button', { name: 'Remove same.png' })[1]);
+  await userEvent.upload(input, new File(['third'], 'more.png', { type: 'image/png' }));
+  expect(screen.getByText('2 files selected')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Upload selected images' }));
+  await screen.findByText(/Upload complete/);
+  const uploads = calls
+    .filter(([path, options]) => path === root + 'imports/batch-id/' && options?.method === 'POST')
+    .map(([, options]) => (options!.body as FormData).get('file') as File);
+  expect(uploads).toHaveLength(2);
+  expect(uploads[0].name).toBe('same.png');
+  expect(uploads[0].size).toBe(second.size);
+  expect(uploads[1].name).toBe('more.png');
+  expect(screen.getByText('0 files selected')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Upload selected images' })).toBeDisabled();
+});
+it('clears all files without confirmation and can select the same file again', async () => {
+  show('/moderation/administration/imports/batch-id');
+  const input = await screen.findByLabelText('Choose images');
+  const file = new File(['one'], 'one.png', { type: 'image/png' });
+  await userEvent.upload(input, [file, new File(['two'], 'two.png', { type: 'image/png' })]);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByText('0 files selected')).toBeInTheDocument();
+  await userEvent.upload(input, file);
+  expect(screen.getByText('1 files selected')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove one.png' })).toBeInTheDocument();
+});
+it('passes explicitly supplied source metadata with each upload', async () => {
+  show('/moderation/administration/imports/batch-id');
+  await userEvent.upload(
+    await screen.findByLabelText('Choose images'),
+    new File(['one'], 'one.png', { type: 'image/png' }),
+  );
+  await userEvent.click(screen.getByText('Source metadata for these uploads (optional)'));
+  await userEvent.selectOptions(screen.getByLabelText('Source type'), 'commons');
+  await userEvent.type(screen.getByLabelText('License / usage rights'), 'CC BY-SA 4.0');
+  await userEvent.type(screen.getByLabelText('Attribution / credit'), 'Verified credit');
+  await userEvent.type(screen.getByLabelText('Creator / photographer (optional)'), 'Creator');
+  await userEvent.type(
+    screen.getByLabelText('Original source URL'),
+    'https://commons.wikimedia.org/wiki/File:Example.jpg',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Upload selected images' }));
+  await screen.findByText(/Upload complete/);
+  const request = calls.find(
+    ([path, options]) => path === root + 'imports/batch-id/' && options?.method === 'POST',
+  );
+  const body = request?.[1]?.body as FormData;
+  expect(body.get('source')).toBe('commons');
+  expect(body.get('license')).toBe('CC BY-SA 4.0');
+  expect(body.get('attribution')).toBe('Verified credit');
+  expect(body.get('photographer')).toBe('Creator');
+});
+it('keeps import actions together and links directly to the correct library record', async () => {
+  show('/moderation/administration/imports/batch-id');
+  const link = await screen.findByRole('link', { name: 'Review in Image Library →' });
+  expect(link).toHaveAttribute('href', '/moderation/administration/images?q=photo-id');
+  await userEvent.click(link);
+  await screen.findByRole('checkbox', { name: 'Select rose' });
+  expect(calls.some(([path]) => path.includes('images/?q=photo-id'))).toBe(true);
+});
+it('edits source metadata separately without assuming Commons licenses', async () => {
+  show('/moderation/administration/images');
+  await userEvent.click(await screen.findByRole('button', { name: 'Review image' }));
+  const dialog = within(screen.getByRole('dialog'));
+  await userEvent.selectOptions(dialog.getByLabelText('Source type'), 'commons');
+  await userEvent.clear(dialog.getByLabelText('License / usage rights'));
+  await userEvent.type(dialog.getByLabelText('License / usage rights'), 'CC BY-SA 4.0');
+  await userEvent.type(
+    dialog.getByLabelText('Original source URL'),
+    'https://commons.wikimedia.org/wiki/File:Example.jpg',
+  );
+  await userEvent.type(dialog.getByLabelText('Creator / photographer'), 'Verified creator');
+  await userEvent.click(dialog.getByRole('button', { name: 'Save reviewed labels' }));
+  await dialog.findByText('Reviewed labels and source metadata saved.');
+  expect(dialog.getByLabelText('License / usage rights')).toHaveValue('CC BY-SA 4.0');
+  const request = calls.find(
+    ([path, options]) => path === root + 'images/photo-id/' && options?.method === 'POST',
+  );
+  expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    photographer: 'Verified creator',
+    canonical_answer: 'rose',
+  });
+});
+it('rejects a pending image immediately and refreshes the badge without a confirmation', async () => {
+  show('/moderation/administration/images');
+  const reject = await screen.findByRole('button', { name: 'Reject pending image' });
+  const approve = within(reject.parentElement!).getByRole('button', {
+    name: 'Approve',
+  });
+  expect(approve.nextElementSibling).toBe(reject);
+  expect(reject).toHaveTextContent('Reject');
+  expect(reject).toHaveClass('mod-button', 'subtle');
+  expect(approve).toHaveClass('mod-button', 'subtle');
+  await userEvent.click(reject);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await screen.findByText('Pending image rejected.');
+  expect(screen.queryByRole('button', { name: 'Reject pending image' })).not.toBeInTheDocument();
+  expect(screen.getByText('rejected', { selector: 'span' })).toBeInTheDocument();
+  const request = calls.find(([path]) => path === root + 'images/review/');
+  expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+    ids: ['photo-id'],
+    operation: 'reject',
+  });
+});
+it('preserves approval confirmation and submits the selected image', async () => {
+  show('/moderation/administration/images');
+  const reject = await screen.findByRole('button', { name: 'Reject pending image' });
+  await userEvent.click(within(reject.parentElement!).getByRole('button', { name: 'Approve' }));
+  const dialog = within(screen.getByRole('dialog', { name: 'Approve 1 image?' }));
+  expect(calls.some(([path]) => path === root + 'images/review/')).toBe(false);
+  await userEvent.click(dialog.getByRole('button', { name: 'Confirm action' }));
+  await screen.findByRole('heading', { name: 'Action results' });
+  const request = calls.find(([path]) => path === root + 'images/review/');
+  expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+    ids: ['photo-id'],
+    operation: 'approve',
+    reason: '',
+  });
+});
+it.each(['Approve', 'Reject', 'Retire', 'Restore'])(
+  '%s confirmation uses singular wording for one image and plural for multiple images',
+  async (operation) => {
+    images = [photo, { ...photo, id: 'second-photo', canonical_answer: 'tiger' }];
+    show('/moderation/administration/images');
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select rose' }));
+    await userEvent.click(
+      within(screen.getByText('1 selected').parentElement!).getByRole('button', {
+        name: operation,
+      }),
+    );
+    const single = within(screen.getByRole('dialog', { name: `${operation} 1 image?` }));
+    expect(single.getByText(/The selected image will be validated/)).toBeInTheDocument();
+    expect(single.queryByText(/skipped images/)).not.toBeInTheDocument();
+    await userEvent.click(single.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select tiger' }));
+    await userEvent.click(
+      within(screen.getByText('2 selected').parentElement!).getByRole('button', {
+        name: operation,
+      }),
+    );
+    const multiple = within(screen.getByRole('dialog', { name: `${operation} 2 images?` }));
+    expect(multiple.getByText(/Every selected image will be validated/)).toBeInTheDocument();
+  },
+);
+it.each(['approved', 'rejected', 'retired'])(
+  'does not offer the shortcut for %s images',
+  async (status) => {
+    images = [{ ...photo, status }];
+    show('/moderation/administration/images');
+    await screen.findByRole('checkbox', { name: 'Select rose' });
+    expect(screen.queryByRole('button', { name: 'Reject pending image' })).not.toBeInTheDocument();
+  },
+);
+it('shows a failed rejection without dropping the pending image', async () => {
+  rejectError = 'Only pending images can be rejected.';
+  show('/moderation/administration/images');
+  await userEvent.click(await screen.findByRole('button', { name: 'Reject pending image' }));
+  await screen.findByText(rejectError);
+  expect(screen.getByRole('button', { name: 'Reject pending image' })).toBeEnabled();
 });
 it('announcement body renders as text and editing remains admin only', async () => {
   notice = {
@@ -373,7 +572,7 @@ it('uses consistent approved wording while explaining the overview image count',
   expect(screen.getByRole('heading', { name: 'Recent staff activity' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'System status' })).toBeInTheDocument();
   expect(within(summary).getByText('Pending player review')).toBeInTheDocument();
-  expect(within(summary).getByText('Pending import review')).toBeInTheDocument();
+  expect(within(summary).getByText('Pending', { exact: true })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: '2 pending player reviews →' })).toHaveAttribute(
     'href',
     '/moderation/administration/images?tab=submissions',
@@ -384,10 +583,10 @@ it('uses consistent approved wording while explaining the overview image count',
   );
 });
 
-it('labels pending library entries as import review and preserves the API filter value', async () => {
+it('labels pending library entries as Pending and preserves the API filter value', async () => {
   show('/moderation/administration/images');
   await screen.findByRole('checkbox', { name: 'Select rose' });
-  expect(screen.getByText('Pending import review', { selector: 'span' })).toBeInTheDocument();
+  expect(screen.getByText('Pending', { selector: 'span' })).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText('Status'), 'pending');
   await userEvent.click(screen.getByRole('button', { name: 'Search' }));
   expect(

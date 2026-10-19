@@ -172,6 +172,7 @@ def image_values(image):
         "attribution": image.attribution,
         "source": image.source,
         "source_url": image.source_url,
+        "photographer": image.local_import_metadata.get("photographer", ""),
     }
 
 
@@ -186,8 +187,14 @@ def edit_image(actor, pk, data, *, library_only=False):
     actor = require_administrator(actor)
     image = get_object_or_404(library_images() if library_only else ImageSubmission, pk=pk)
     before = image_values(image)
+    if "photographer" in data:
+        image.local_import_metadata = {
+            **image.local_import_metadata,
+            "photographer": data["photographer"],
+        }
     for key, value in data.items():
-        setattr(image, key, value)
+        if key != "photographer":
+            setattr(image, key, value)
     from urllib.parse import urlsplit
 
     url = urlsplit(image.source_url)
@@ -195,7 +202,10 @@ def edit_image(actor, pk, data, *, library_only=False):
         raise ValidationError({"source_url": "Use an HTTPS URL without credentials."})
     if image.source in {"commons", "licensed"} and not image.source_url:
         raise ValidationError({"source_url": "This source requires a provenance URL."})
-    if image.local_import_digest:
+    if (
+        image.local_import_digest
+        and {"canonical_answer", "accepted_synonyms", "category"} <= data.keys()
+    ):
         image.local_import_metadata = {**image.local_import_metadata, "label_verified": True}
     try:
         image.full_clean()
@@ -220,6 +230,8 @@ def review_image(actor, pk, operation, reason="", *, library_only=False):
     image = get_object_or_404(library_images() if library_only else ImageSubmission, pk=pk)
     before = image_values(image)
     if operation in {"approve", "reject"}:
+        if operation == "reject" and (image.status != "pending" or image.retired_at):
+            raise ValidationError({"detail": "Only pending images can be rejected."})
         if operation == "reject" and not is_administrator(actor) and not reason.strip():
             raise ValidationError({"reason": "A rejection reason is required."})
         expected = "approved" if operation == "approve" else "rejected"

@@ -64,7 +64,12 @@ def add_image(client, administrator, category, color="red"):
     batch = client.post(ROOT + "imports/", {"name": "Test collection"}, format="json").json()
     result = client.post(
         ROOT + f"imports/{batch['id']}/",
-        {"request_id": str(uuid.uuid4()), "file": upload(color=color)},
+        {
+            "request_id": str(uuid.uuid4()),
+            "file": upload(color=color),
+            "license": "CC0",
+            "attribution": "Test creator",
+        },
         format="multipart",
     )
     assert result.status_code == 201, result.content
@@ -317,7 +322,8 @@ def test_browser_upload_validation_resume_duplicates_and_pending(client, adminis
     assert duplicate.json()["status"] == "duplicate" and ImageSubmission.objects.count() == 1
     image = ImageSubmission.objects.get()
     assert image.status == "pending" and not image.local_import_metadata["label_verified"]
-    assert image.attribution == "Pexels" and image.license == "Pexels License"
+    assert image.attribution == "UNVERIFIED" and image.license == "UNVERIFIED"
+    assert image.source == "manual" and image.source_url == ""
     failed = client.post(
         url,
         {"request_id": str(uuid.uuid4()), "file": SimpleUploadedFile("bad.jpg", b"broken")},
@@ -386,9 +392,10 @@ def test_bulk_results_are_explicit_and_administrator_reason_is_optional(
         format="json",
     ).json()
     assert [row["status"] for row in result["results"]] == ["success", "failed"]
+    pending = add_image(client, administrator, category, color="blue")
     result = client.post(
         ROOT + "images/review/",
-        {"operation": "reject", "ids": [str(image.pk)], "reason": "Ambiguous subject"},
+        {"operation": "reject", "ids": [str(pending.pk)], "reason": "Ambiguous subject"},
         format="json",
     ).json()
     assert result["results"][0]["status"] == "success"
@@ -409,6 +416,166 @@ def test_upload_outer_audit_failure_cleans_new_file(client, administrator, categ
     from django.core.files.storage import default_storage
 
     assert not default_storage.exists("images") or not default_storage.listdir("images")[1]
+
+
+@pytest.mark.parametrize("license_name", ["CC BY-SA 4.0", "CC0", "Public Domain"])
+@pytest.mark.parametrize("prototype", [True, False])
+def test_browser_metadata_preserved_and_commons_review_is_source_specific(
+    client, administrator, category, settings, license_name, prototype
+):
+    settings.PEXELS_PROTOTYPE_METADATA = prototype
+    authenticate(client, administrator)
+    batch = ImportBatch.objects.create(name="Commons", created_by=administrator)
+    values = {
+        "source": "commons",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+        "license": license_name,
+        "attribution": "Verified credit",
+        "photographer": "Verified creator",
+    }
+    response = client.post(
+        ROOT + f"imports/{batch.pk}/",
+        {
+            "request_id": str(uuid.uuid4()),
+            "file": upload(name="pexels-looking-filename.png"),
+            **values,
+        },
+        format="multipart",
+    )
+    assert response.status_code == 201, response.content
+    image = ImageSubmission.objects.get(pk=response.json()["image"]["id"])
+    for key, value in values.items():
+        assert (
+            image.local_import_metadata[key] if key == "photographer" else getattr(image, key)
+        ) == value
+    assert image.status == "pending"
+    with pytest.raises(ValidationError):
+        review_image(administrator, image.pk, "approve")
+    response = client.post(
+        ROOT + f"images/{image.pk}/",
+        {"canonical_answer": "tiger", "accepted_synonyms": [], "category": category.pk},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert review_image(administrator, image.pk, "approve")[0] == "success"
+    image.refresh_from_db()
+    assert image.license == license_name and image.attribution == values["attribution"]
+    # A duplicate upload must not overwrite this existing image's metadata.
+    duplicate = client.post(
+        ROOT + f"imports/{batch.pk}/",
+        {
+            "request_id": str(uuid.uuid4()),
+            "file": upload(),
+            "license": "Different license",
+            "attribution": "Different credit",
+        },
+        format="multipart",
+    )
+    assert duplicate.json()["status"] == "duplicate"
+    image.refresh_from_db()
+    assert image.license == license_name and image.attribution == values["attribution"]
+
+
+def test_metadata_only_edit_preserves_labels_file_and_other_provenance(
+    client, administrator, category
+):
+    image = add_image(client, administrator, category)
+    from moderation.administration import image_values
+
+    before = image_values(image)
+    metadata = image.local_import_metadata.copy()
+    filename = image.image_file.name
+    content = image.image_file.read()
+    response = client.post(
+        ROOT + f"images/{image.pk}/",
+        {
+            "source": "commons",
+            "source_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+            "license": "Public Domain",
+            "attribution": "Wikimedia Commons",
+            "photographer": "Verified creator",
+        },
+        format="json",
+    )
+    assert response.status_code == 200, response.content
+    image.refresh_from_db()
+    after = image_values(image)
+    for key in (
+        "canonical_answer",
+        "accepted_synonyms",
+        "category",
+        "status",
+        "label_verified",
+        "retired",
+    ):
+        assert after[key] == before[key]
+    assert image.image_file.name == filename and image.image_file.read() == content
+    assert image.local_import_metadata == {**metadata, "photographer": "Verified creator"}
+    assert response.json()["source"] == "commons" and response.json()["license"] == "Public Domain"
+
+
+def test_metadata_only_edit_does_not_confirm_unreviewed_labels(client, administrator):
+    authenticate(client, administrator)
+    batch = ImportBatch.objects.create(name="Unreviewed", created_by=administrator)
+    result = client.post(
+        ROOT + f"imports/{batch.pk}/",
+        {"request_id": str(uuid.uuid4()), "file": upload()},
+        format="multipart",
+    )
+    image = ImageSubmission.objects.get(pk=result.json()["image"]["id"])
+    response = client.post(
+        ROOT + f"images/{image.pk}/", {"license": "CC0", "attribution": "Creator"}, format="json"
+    )
+    assert response.status_code == 200
+    image.refresh_from_db()
+    assert image.local_import_metadata["label_verified"] is False
+    with pytest.raises(ValidationError):
+        review_image(administrator, image.pk, "approve")
+
+
+@pytest.mark.parametrize("who", ["anonymous", "player", "moderator"])
+def test_metadata_edits_require_existing_administrator_permission(
+    client, administrator, moderator, user, category, who
+):
+    image = add_image(client, administrator, category)
+    authenticate(client, {"anonymous": None, "player": user, "moderator": moderator}[who])
+    assert (
+        client.post(
+            ROOT + f"images/{image.pk}/", {"attribution": "Unauthorized"}, format="json"
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            ROOT + "images/review/", {"ids": [str(image.pk)], "operation": "reject"}, format="json"
+        ).status_code
+        == 403
+    )
+    image.refresh_from_db()
+    assert image.attribution == "Test creator"
+
+
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected", "retired"])
+def test_reject_shortcut_is_pending_only_and_never_deletes(client, administrator, category, status):
+    image = add_image(client, administrator, category)
+    if status in {"approved", "retired"}:
+        review_image(administrator, image.pk, "approve")
+    elif status == "rejected":
+        review_image(administrator, image.pk, "reject")
+    if status == "retired":
+        review_image(administrator, image.pk, "retire")
+    filename = image.image_file.name
+    response = client.post(
+        ROOT + "images/review/", {"ids": [str(image.pk)], "operation": "reject"}, format="json"
+    )
+    assert response.json()["results"][0]["status"] == (
+        "success" if status == "pending" else "failed"
+    )
+    image.refresh_from_db()
+    assert image.status == (
+        "rejected" if status == "pending" else "approved" if status == "retired" else status
+    )
+    assert image.image_file.name == filename and image.image_file.storage.exists(filename)
 
 
 def test_audit_read_only_health_sanitized_and_csrf(client, administrator, user):

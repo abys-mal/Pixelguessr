@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type Category, type Page } from '../api';
@@ -28,6 +28,7 @@ export function ImageEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [revision, setRevision] = useState(0);
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
@@ -42,9 +43,16 @@ export function ImageEditor({
           .map((x) => x.trim())
           .filter(Boolean),
         category: Number(form.get('category')),
+        source: form.get('source'),
+        source_url: form.get('source_url'),
+        license: form.get('license'),
+        attribution: form.get('attribution'),
+        photographer: form.get('photographer'),
       });
       setCurrent(next);
-      setMessage('Reviewed labels saved.');
+      setCategory(next.category);
+      setRevision((value) => value + 1);
+      setMessage('Reviewed labels and source metadata saved.');
       saved();
     } catch (e) {
       setError((e as Error).message);
@@ -68,9 +76,9 @@ export function ImageEditor({
           alt={`Private preview: ${current.canonical_answer}`}
         />
         <span className={`mod-chip ${current.status}`}>
-          {current.status === 'pending' ? 'Pending import review' : current.status}
+          {current.status === 'pending' ? 'Pending' : current.status}
         </span>
-        <form className="mod-form" onSubmit={(e) => void save(e)}>
+        <form key={revision} className="mod-form" onSubmit={(e) => void save(e)}>
           <label>
             Canonical answer
             <input name="answer" required maxLength={120} defaultValue={current.canonical_answer} />
@@ -97,9 +105,50 @@ export function ImageEditor({
               ))}
             </select>
           </label>
+          <label>
+            Source type
+            <select name="source" defaultValue={current.source || 'manual'}>
+              <option value="manual">Manual upload</option>
+              <option value="commons">Wikimedia Commons</option>
+              <option value="licensed">Other licensed source</option>
+              <option value="ai">AI-generated</option>
+            </select>
+          </label>
+          <label>
+            Creator / photographer
+            <input
+              name="photographer"
+              maxLength={500}
+              defaultValue={String(current.import_metadata.photographer ?? '')}
+            />
+          </label>
+          <label>
+            License / usage rights
+            <input
+              name="license"
+              required
+              maxLength={160}
+              defaultValue={current.license}
+              placeholder="CC0, Public Domain, or the specific license"
+            />
+          </label>
           <p className="mod-muted">
-            Saving confirms you reviewed these labels. Existing round snapshots stay unchanged.
+            Commons images have individual licenses. CC0 and Public Domain are distinct; verify the
+            original file page.
           </p>
+          <label>
+            Attribution / credit
+            <input name="attribution" required maxLength={500} defaultValue={current.attribution} />
+          </label>
+          <label>
+            Original source URL
+            <input
+              name="source_url"
+              type="url"
+              maxLength={1000}
+              defaultValue={current.source_url}
+            />
+          </label>
           <button className="mod-button" disabled={pending || !categories}>
             {pending ? 'Saving…' : 'Save reviewed labels'}
           </button>
@@ -150,6 +199,32 @@ function GeneralImageLibrary() {
   const [operation, setOperation] = useState('');
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [message, setMessage] = useState('');
+  const [rejecting, setRejecting] = useState<string[]>([]);
+  const rejectLocks = useRef(new Set<string>());
+  const reject = async (image: LibraryImage) => {
+    if (rejectLocks.current.has(image.id)) return;
+    rejectLocks.current.add(image.id);
+    setRejecting((ids) => [...ids, image.id]);
+    setMessage('');
+    setActionError('');
+    try {
+      const response = await send<{ results: { status: string; error?: string }[] }>(
+        'images/review/',
+        { ids: [image.id], operation: 'reject' },
+      );
+      if (response.results[0]?.status !== 'success')
+        throw new Error(response.results[0]?.error || 'Unable to reject this pending image.');
+      setSelected((ids) => ids.filter((id) => id !== image.id));
+      setMessage('Pending image rejected.');
+      reload();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      rejectLocks.current.delete(image.id);
+      setRejecting((ids) => ids.filter((id) => id !== image.id));
+    }
+  };
   const [results, setResults] = useState<{ id: string; status: string; error?: string }[]>([]);
   const run = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -199,7 +274,7 @@ function GeneralImageLibrary() {
             <option value="">All images</option>
             {['pending', 'approved', 'rejected', 'retired'].map((s) => (
               <option key={s} value={s}>
-                {s === 'pending' ? 'Pending import review' : s}
+                {s === 'pending' ? 'Pending' : s}
               </option>
             ))}
           </select>
@@ -222,6 +297,7 @@ function GeneralImageLibrary() {
           </button>
         ))}
       </div>
+      <Feedback error={!operation ? actionError : ''} message={message} />
       {results.length > 0 && (
         <section className="mod-card" role="status">
           <h2>Action results</h2>
@@ -261,7 +337,7 @@ function GeneralImageLibrary() {
                     }
                   />
                   <span className={`mod-chip ${image.status}`}>
-                    {image.status === 'pending' ? 'Pending import review' : image.status}
+                    {image.status === 'pending' ? 'Pending' : image.status}
                   </span>
                 </label>
                 <button className="admin-image-open" onClick={() => setEditing(image)}>
@@ -282,25 +358,39 @@ function GeneralImageLibrary() {
                   <button className="mod-button subtle" onClick={() => setEditing(image)}>
                     Review image
                   </button>
-                  <button
-                    className="mod-button subtle"
-                    onClick={() => {
-                      setSelected([image.id]);
-                      setOperation(
-                        image.status === 'retired'
-                          ? 'restore'
-                          : image.status === 'approved'
-                            ? 'retire'
-                            : 'approve',
-                      );
-                    }}
-                  >
-                    {image.status === 'retired'
-                      ? 'Restore'
-                      : image.status === 'approved'
-                        ? 'Retire'
-                        : 'Approve'}
-                  </button>
+                  <div className="mod-actions admin-review-decisions">
+                    <button
+                      className="mod-button subtle"
+                      onClick={() => {
+                        setSelected([image.id]);
+                        setOperation(
+                          image.status === 'retired'
+                            ? 'restore'
+                            : image.status === 'approved'
+                              ? 'retire'
+                              : 'approve',
+                        );
+                      }}
+                    >
+                      {image.status === 'retired'
+                        ? 'Restore'
+                        : image.status === 'approved'
+                          ? 'Retire'
+                          : 'Approve'}
+                    </button>
+                    {image.status === 'pending' && (
+                      <button
+                        type="button"
+                        className="mod-button subtle"
+                        aria-label="Reject pending image"
+                        title={`Reject pending image: ${image.canonical_answer}`}
+                        disabled={rejecting.includes(image.id) || pending}
+                        onClick={() => void reject(image)}
+                      >
+                        Reject
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}
@@ -320,14 +410,15 @@ function GeneralImageLibrary() {
       {editing && <ImageEditor image={editing} close={() => setEditing(null)} saved={reload} />}{' '}
       {operation && (
         <Dialog
-          title={`${operation[0].toUpperCase() + operation.slice(1)} ${selected.length} images?`}
+          title={`${operation[0].toUpperCase() + operation.slice(1)} ${selected.length} ${selected.length === 1 ? 'image' : 'images'}?`}
           close={() => setOperation('')}
           pending={pending}
         >
           <form className="mod-form" onSubmit={(e) => void run(e)}>
             <p>
-              Every selected image will be validated. The results will show successes, failures and
-              skipped images.
+              {selected.length === 1
+                ? 'The selected image will be validated. The result will show whether it succeeded, failed or was skipped.'
+                : 'Every selected image will be validated. The results will show successes, failures and skipped images.'}
             </p>
             <label>
               Reason (optional)

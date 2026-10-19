@@ -42,6 +42,9 @@ Choose or drop multiple still JPG, PNG or WebP files. Uploads use the shared ima
 conversion/storage pipeline: 8 MiB input maximum, at least 64 pixels per side,
 existing dimension/pixel checks, bounded resize, stripped metadata, private WebP
 files, opaque keys and content deduplication. Nothing fetches external URLs.
+The pre-upload list supports individual removal, additive selection/drop, and
+Clear all. Each selection has its own ID even when filenames match; removing a
+selection never rejects or deletes an uploaded image.
 
 Each file has a persistent batch item with uploaded/duplicate/failed status.
 Request UUIDs make upload retries idempotent. Duplicate files reuse their existing
@@ -50,20 +53,31 @@ errors. A storage/database failure can require retrying the file; new storage
 objects are cleaned up if the batch transaction fails. Unsent browser selections
 are not persisted; uploaded items and their labels survive leaving the page.
 
-New images start pending with unverified labels. Open **Prepare labels**, enter
+New images start pending with unverified labels and unspecified source metadata;
+browser uploads do not assume Pexels, a creator, or any license. Optional upload
+metadata is preserved. Open **Prepare labels**, enter
 answers/synonyms/category, and **Save reviewed labels**. This explicitly records
 label review; it does not approve the image. The library then provides individual
-or selected-image approval, rejection with an optional reason, retirement and
+or selected-image approval, pending-only rejection with an optional reason, retirement and
 restoration. Bulk actions validate each unique ID independently (maximum 50),
 commit each successful item, and report success, skipped or failed per image.
 
-The existing development Pexels policy is preserved: generic `Pexels` attribution,
-`Pexels License`, optional individual source metadata while
-`PEXELS_PROTOTYPE_METADATA=True` and `DEBUG=True`. Provenance remains stored for
-later enrichment. Approval still verifies labels, stored bytes and all existing
-model rules. The provisional canal photograph remains pending until its label is
-explicitly reviewed. Browser imports are intended for this curated prototype;
-production provenance/licensing rules remain stricter when that flag is off.
+The drawer also edits source type, creator/photographer, license, attribution,
+and original source URL. Metadata-only API edits preserve unspecified fields and
+do not confirm unreviewed labels. Commons licenses must be verified individually:
+CC0, Public Domain, and attribution/share-alike licenses are distinct. Browser
+approval requires reviewed labels, supplied license/credit and valid provenance
+where required, plus existing byte/duplicate/model checks. Existing browser items
+are identified through their durable ImportItem relation, not filenames.
+
+The explicit command-line Pexels workflow retains its existing development
+prototype policy and stricter non-prototype rules. Browser imports do not use
+that platform assumption; duplicate uploads do not rewrite existing provenance.
+The provisional canal photograph remains pending until its label is reviewed.
+
+Pending library cards have a muted X shortcut: rejection is immediate, audited,
+and preserves both record and file. The server refuses non-pending rejection.
+Use retirement for approved images. Bulk operations retain their confirmation.
 
 The drawer uses the real server-side reveal compositor with a stable tile order
 and a 20 by 20 inspection grid. Originals and preview frames require administrator
@@ -95,11 +109,11 @@ cookies, CSRF and server input validation. Unknown mutation fields are rejected.
 | `audit/?q=&action=&target_type=&page=` | GET | Existing Activity log |
 | `health/` | GET | Safe probe results |
 | `images/?q=&status=&page=` | GET | Library |
-| `images/<uuid>/` | GET, POST | Detail / reviewed labels |
+| `images/<uuid>/` | GET, POST | Detail / partial label and source metadata edits |
 | `images/review/` | POST | `ids`, `operation`, `reason` |
 | `images/<uuid>/preview/?reveal=200` | GET | Private original or actual reveal frame (0–400 tiles) |
 | `imports/` | GET, POST | List/create named batches |
-| `imports/<uuid>/` | GET, POST | Item list / multipart `file` and unique `request_id` |
+| `imports/<uuid>/` | GET, POST | Item list / multipart `file`, unique `request_id`, optional `source`, `source_url`, `license`, `attribution`, `photographer` |
 
 The announcement GET is intentionally available to moderators; every other
 administration endpoint requires administrator access. Native moderator promotion

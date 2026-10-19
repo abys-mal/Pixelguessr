@@ -386,15 +386,16 @@ class BatchDetail(AdministratorView):
         )
 
     def post(self, request, pk):
-        if set(request.data) - {"request_id", "file"}:
-            raise ValidationError("Unexpected upload fields.")
-        request_id = serializers.UUIDField().run_validation(request.data.get("request_id"))
-        upload = request.FILES.get("file")
-        if not upload:
-            raise ValidationError({"file": "Choose an image."})
+        from .administration_serializers import ImportUpload
+
+        data = validated(ImportUpload, request.data)
+        request_id = data.pop("request_id")
+        upload = data.pop("file")
         if upload.size > 8 * 1024 * 1024:
             raise ValidationError({"file": "Maximum upload size is 8 MiB."})
-        return Response(item_payload(upload_item(request.user, pk, request_id, upload)), status=201)
+        return Response(
+            item_payload(upload_item(request.user, pk, request_id, upload, data)), status=201
+        )
 
 
 @method_decorator(sensitive_post_parameters(), name="dispatch")

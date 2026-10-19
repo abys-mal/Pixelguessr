@@ -46,13 +46,26 @@ class AnnouncementInput(StrictInput):
 
 
 class ImageEdit(StrictInput):
-    canonical_answer = serializers.CharField(max_length=120)
-    accepted_synonyms = serializers.JSONField(validators=[validate_synonyms])
-    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
+    canonical_answer = serializers.CharField(max_length=120, required=False)
+    accepted_synonyms = serializers.JSONField(validators=[validate_synonyms], required=False)
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), required=False)
     license = serializers.CharField(max_length=160, required=False)
     attribution = serializers.CharField(max_length=500, required=False)
     source = serializers.ChoiceField(choices=ImageSubmission.Source, required=False)
     source_url = serializers.URLField(max_length=1000, required=False, allow_blank=True)
+    photographer = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+
+class ImportUpload(StrictInput):
+    request_id = serializers.UUIDField()
+    file = serializers.FileField()
+    source = serializers.ChoiceField(
+        choices=ImageSubmission.Source, required=False, default="manual"
+    )
+    license = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    attribution = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    source_url = serializers.URLField(max_length=1000, required=False, allow_blank=True)
+    photographer = serializers.CharField(max_length=500, required=False, allow_blank=True)
 
 
 class ContributionReview(StrictInput):

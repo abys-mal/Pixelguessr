@@ -10,6 +10,7 @@
   margin: 0 14px 4px;
 }
 .admin-overview,
+.admin-import-page,
 .admin-staff-page {
   --admin-section-gap: 24px;
   display: grid;
@@ -17,6 +18,7 @@
   min-width: 0;
 }
 .admin-overview > .mod-heading,
+.admin-import-page > .mod-heading,
 .admin-staff-page > .mod-heading {
   margin-bottom: 0;
 }
@@ -120,11 +122,112 @@
   gap: 20px;
 }
 .admin-image-card {
+  position: relative;
   background: var(--mod-panel);
   border: 1px solid var(--mod-line);
   border-radius: 12px;
   overflow: hidden;
   padding: 14px;
+}
+.admin-dismiss {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--mod-muted);
+  background: transparent;
+  border: 1px solid var(--mod-line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.admin-dismiss:hover {
+  color: var(--mod-text, #eef2f7);
+  background: #ffffff08;
+}
+.admin-dismiss:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.admin-review-decisions {
+  align-items: center;
+  gap: 12px;
+  margin-top: 0;
+}
+.admin-import-page .admin-filters {
+  margin: 0;
+}
+.admin-import-page > .mod-back,
+.admin-import-page > .mod-pager,
+.admin-import-page > .mod-muted {
+  margin: 0;
+}
+.admin-upload > button {
+  justify-self: start;
+}
+.admin-import-page .admin-image-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+}
+.admin-import-page .admin-upload,
+.admin-import-result {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+.admin-import-page .admin-upload > *,
+.admin-import-result > * {
+  margin: 0;
+  min-width: 0;
+}
+.admin-import-result .admin-large-preview {
+  margin: 0;
+}
+.admin-import-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.admin-import-actions > a {
+  white-space: nowrap;
+  font-size: 13px;
+  padding-block: 8px;
+}
+.admin-import-metadata {
+  border-top: 1px solid var(--mod-line);
+  padding-top: 20px;
+}
+.admin-selected-files {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.admin-selected-files li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--mod-line);
+  border-radius: 8px;
+}
+.admin-selected-files img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+.admin-selected-files li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  flex: 1;
+  font-size: 13px;
+}
+.admin-selected-files small {
+  display: block;
 }
 .admin-image-select {
   display: flex;

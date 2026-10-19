@@ -7,17 +7,17 @@ from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
 from library.image_processing import convert_image
-from library.local_import import register_image
+from library.local_import import UNVERIFIED, register_image
 from library.models import Category, ImageSubmission, ImportBatch, ImportItem
 from library.serializers import SubmissionSerializer
 
 from .administration import audit, require_administrator
 
 
-def upload_item(actor, batch_id, request_id, upload):
+def upload_item(actor, batch_id, request_id, upload, metadata=None):
     created_files = []
     try:
-        return _upload_item(actor, batch_id, request_id, upload, created_files)
+        return _upload_item(actor, batch_id, request_id, upload, created_files, metadata or {})
     except Exception:
         for storage, name in created_files:
             try:
@@ -29,7 +29,7 @@ def upload_item(actor, batch_id, request_id, upload):
         raise
 
 
-def _upload_item(actor, batch_id, request_id, upload, created_files):
+def _upload_item(actor, batch_id, request_id, upload, created_files, metadata):
     actor = require_administrator(actor)
     # Decode outside the DB transaction; durable batch locking precedes all mutable reads.
     converted = error = None
@@ -68,9 +68,10 @@ def _upload_item(actor, batch_id, request_id, upload, created_files):
                     "canonical_answer": "Unlabeled image",
                     "accepted_synonyms": [],
                     "category": category.pk,
-                    "source": "manual",
-                    "license": "Pexels License",
-                    "attribution": "Pexels",
+                    "source": metadata.get("source", "manual"),
+                    "source_url": metadata.get("source_url", ""),
+                    "license": metadata.get("license") or UNVERIFIED,
+                    "attribution": metadata.get("attribution") or UNVERIFIED,
                     "image_file": converted.file,
                 }
             )
@@ -80,7 +81,8 @@ def _upload_item(actor, batch_id, request_id, upload, created_files):
                 "source_sha256": source_sha,
                 "description": "",
                 "difficulty": "medium",
-                "photographer": "",
+                "photographer": metadata.get("photographer", ""),
+                "import_kind": "browser",
                 "review_notes": "Browser import; label review required.",
                 "label_verified": False,
                 "metadata_verified": False,

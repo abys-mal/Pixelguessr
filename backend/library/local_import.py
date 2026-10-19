@@ -105,6 +105,25 @@ def known(value):
 def validate_approval(image):
     meta = image.local_import_metadata
     url = urlsplit(image.source_url)
+    # Browser uploads are general-purpose. Existing batches predate import_kind,
+    # so their durable ImportItem relation also identifies this workflow.
+    from .models import ImportItem
+
+    if meta.get("import_kind") == "browser" or (
+        "prototype_metadata" not in meta and ImportItem.objects.filter(image_id=image.pk).exists()
+    ):
+        if (
+            meta.get("label_verified") is not True
+            or not known(image.canonical_answer)
+            or not known(image.license)
+            or not known(image.attribution)
+            or (image.source in {"commons", "licensed"} and not image.source_url)
+            or (image.source_url and (url.scheme != "https" or url.username or url.password))
+        ):
+            raise ValidationError(
+                "Browser imports require reviewed labels, license, attribution and valid source metadata before approval."
+            )
+        return
     if settings.PEXELS_PROTOTYPE_METADATA:
         if (
             meta.get("label_verified") is not True
