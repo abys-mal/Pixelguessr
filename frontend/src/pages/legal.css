@@ -1,0 +1,43 @@
+.legal-page {
+  max-width: 850px;
+  margin-inline: auto;
+}
+.legal-document {
+  padding: clamp(20px, 4vw, 36px);
+  overflow-wrap: anywhere;
+}
+.legal-document h2 {
+  font-size: 21px;
+  line-height: 1.4;
+}
+.legal-document p,
+.legal-document li {
+  font-size: 14px;
+  line-height: 1.85;
+  color: var(--muted);
+}
+.legal-document li + li {
+  margin-top: 12px;
+}
+.legal-draft {
+  border-left: 2px solid var(--violet);
+  padding-left: 14px;
+}
+.legal-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  font-size: 12px;
+  margin: 24px 0;
+}
+.legal-dates dt {
+  color: var(--muted);
+}
+.legal-dates dd {
+  margin: 4px 0 0;
+}
+.site-footer .legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}

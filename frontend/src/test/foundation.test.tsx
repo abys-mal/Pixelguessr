@@ -26,7 +26,7 @@ function page(path = '/') {
 describe('Established experience', () => {
   it('shows all modes and honest availability', () => {
     page();
-    for (const mode of ['Ranked Duel', 'Singleplayer', 'Parties'])
+    for (const mode of ['Ranked Duels', 'Singleplayer', 'Parties'])
       expect(screen.getByRole('heading', { name: mode })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Play Ranked Duel/ })).toHaveAttribute(
       'href',

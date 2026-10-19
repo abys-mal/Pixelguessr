@@ -12,6 +12,11 @@ from .workspace import eligibility
 class PlayerNamesInput(SettingsSerializer):
     username = serializers.CharField(max_length=150, trim_whitespace=False, required=False)
 
+    def validate_display_name(self, value):
+        # Only change_names selects this serializer, after server-side authorization.
+        # Staff using self-service account endpoints still use the normal filter.
+        return value
+
     class Meta(SettingsSerializer.Meta):
         fields = ["username", "display_name"]
 

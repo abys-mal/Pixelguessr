@@ -8,6 +8,7 @@ from rest_framework.exceptions import APIException
 from games.ranked_rules import tier
 
 from .models import User
+from .name_filter import validate_player_name
 from .validators import validate_username_rules
 
 
@@ -97,6 +98,14 @@ def available_email(value, *, excluding=None):
     return value
 
 
+def player_name(value):
+    try:
+        validate_player_name(value)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.messages) from exc
+    return value
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     username = serializers.CharField(max_length=150, trim_whitespace=False)
     password = serializers.CharField(write_only=True, trim_whitespace=False, max_length=128)
@@ -108,7 +117,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["username", "email", "display_name", "password", "password_confirm"]
 
     def validate_username(self, value):
-        return available_username(value)
+        return player_name(available_username(value))
+
+    def validate_display_name(self, value):
+        return player_name(value)
 
     def validate_email(self, value):
         return available_email(value)
@@ -163,6 +175,9 @@ class LoginSerializer(serializers.Serializer):
 
 
 class SettingsSerializer(serializers.ModelSerializer):
+    def validate_display_name(self, value):
+        return player_name(value)
+
     class Meta:
         model = User
         fields = ["display_name"]
@@ -184,7 +199,7 @@ class UsernameChangeSerializer(AccountChangeSerializer):
     new_username = serializers.CharField(max_length=150, trim_whitespace=False)
 
     def validate_new_username(self, value):
-        return username_format(value)
+        return player_name(username_format(value))
 
 
 class EmailChangeSerializer(AccountChangeSerializer):

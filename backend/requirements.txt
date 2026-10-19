@@ -3,6 +3,7 @@ asgiref==3.12.1
 attrs==26.1.0
 autobahn==26.7.1
 Automat==25.4.16
+better-profanity==0.7.0
 boto3==1.43.111
 botocore==1.43.111
 cbor2==6.1.5

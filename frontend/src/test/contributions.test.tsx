@@ -231,7 +231,26 @@ it('opens an upload-only draft with a local preview and submits synonyms and rig
   expect(sent?.get('accepted_synonyms')).toBe('["vulpes","red fox"]');
   expect(sent?.get('rights_acknowledged')).toBe('true');
   expect(sent?.get('image_file')).toBeInstanceOf(File);
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-preview');
+  await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-preview'));
+});
+it('releases replaced previews and releases the current preview only when the draft closes', async () => {
+  vi.mocked(URL.createObjectURL)
+    .mockReturnValueOnce('blob:first')
+    .mockReturnValueOnce('blob:second');
+  show();
+  const dialog = await openNew();
+  const upload = dialog.getByLabelText(/Image upload/);
+  await userEvent.upload(upload, new File(['first'], 'first.png', { type: 'image/png' }));
+  await userEvent.upload(upload, new File(['second'], 'second.png', { type: 'image/png' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:first');
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:second');
+  await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:second');
+  await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:second'));
 });
 it('requires source URL for licensed images while explaining owned and AI rights', async () => {
   show();
@@ -242,6 +261,49 @@ it('requires source URL for licensed images while explaining owned and AI rights
   expect(dialog.getByLabelText('Source / provenance URL (optional)')).not.toBeRequired();
   expect(dialog.getByText(/generation tool’s usage terms/)).toBeInTheDocument();
 });
+it.each(['Cancel', 'Escape'])(
+  'keeps an untouched draft open after file-picker %s',
+  async (action) => {
+    show();
+    const dialog = await openNew();
+    const upload = dialog.getByLabelText(/Image upload/);
+    if (action === 'Escape') fireEvent.keyDown(upload, { key: 'Escape' });
+    fireEvent(upload, new Event('cancel', { bubbles: true }));
+    expect(screen.getByRole('dialog', { name: 'New Submission' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  },
+);
+it.each(['Cancel', 'Escape'])(
+  'preserves form data and the selected preview after file-picker %s',
+  async (action) => {
+    show();
+    const dialog = await fillSubmission();
+    const upload = dialog.getByLabelText(/Image upload/) as HTMLInputElement;
+    const file = upload.files?.[0];
+    if (action === 'Escape') fireEvent.keyDown(upload, { key: 'Escape' });
+    fireEvent(upload, new Event('cancel', { bubbles: true }));
+    expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument();
+    expect(dialog.getByLabelText('Canonical answer')).toHaveValue('fox');
+    expect(upload.files?.[0]).toBe(file);
+    expect(dialog.getByRole('img', { name: 'Local image preview' })).toHaveAttribute(
+      'src',
+      'blob:local-preview',
+    );
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    // A subsequent cancel originating from the dialog itself is intentional Escape.
+    fireEvent(
+      screen.getByRole('dialog', { name: 'New Submission' }),
+      new Event('cancel', { bubbles: false, cancelable: true }),
+    );
+    await screen.findByRole('dialog', { name: 'Discard this draft?' });
+    await userEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(dialog.getByLabelText('Canonical answer')).toHaveValue('fox');
+    expect(dialog.getByRole('img', { name: 'Local image preview' })).toBeInTheDocument();
+  },
+);
 it('asks before discarding entered data, preserves it when cancelled and supports Escape', async () => {
   show();
   const dialog = await openNew();

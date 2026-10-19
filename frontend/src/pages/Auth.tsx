@@ -126,6 +126,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             Use at least 10 characters. Avoid common passwords and personal details.
           </p>
         )}
+        {register && (
+          <p className="field-help">
+            By creating an account, you agree to the <Link to="/terms">Terms of Service</Link> and
+            acknowledge the <Link to="/privacy">Privacy Policy</Link>.
+          </p>
+        )}
         {error && <StatusMessage error>{error}</StatusMessage>}
         <button className="button" disabled={pending}>
           {pending ? 'Please wait…' : register ? 'Create account' : 'Sign in'}

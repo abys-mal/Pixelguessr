@@ -236,7 +236,52 @@
   color: #39191c !important;
   background: #ffb0b3 !important;
 }
+.mod-dialog:has(.contribution-form) {
+  width: min(720px, calc(100vw - 32px));
+  padding: 20px 24px;
+}
+.mod-dialog:has(.contribution-form) .mod-dialog-heading {
+  margin-bottom: 10px;
+}
+.mod-dialog:has(.contribution-form) > .muted {
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.contribution-form.form-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+.contribution-form > * {
+  min-width: 0;
+}
+.contribution-form .contribution-upload,
+.contribution-form > p,
+.contribution-form > [role='alert'],
+.contribution-form label:has(input[name='source_url']),
+.contribution-form .contribution-rights,
+.contribution-form .contribution-actions {
+  grid-column: 1 / -1;
+}
+.contribution-form .contribution-upload {
+  padding: 10px;
+}
+.contribution-form .contribution-upload-prompt {
+  padding: 14px;
+}
+.contribution-form .contribution-upload > img {
+  max-height: 168px;
+}
+.contribution-form .contribution-actions {
+  margin-top: 4px;
+}
 @media (max-width: 650px) {
+  .contribution-form.form-stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mod-dialog:has(.contribution-form) {
+    padding: 16px 18px;
+  }
   .contribution-stats {
     gap: 8px;
   }

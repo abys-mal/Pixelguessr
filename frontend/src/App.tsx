@@ -14,6 +14,7 @@ import { Library } from './pages/Library';
 import { Submit } from './pages/Submit';
 import { Contributions } from './pages/Contributions';
 import { About, NotFound } from './pages/Info';
+import { Privacy, Terms } from './pages/Legal';
 import { ModerationLayout } from './moderation/Layout';
 import { ModerationHome } from './moderation/Home';
 import { ModerationPlayers } from './moderation/Players';
@@ -68,6 +69,8 @@ export function App() {
         <Route path="submit" element={<Submit />} />
         <Route path="leaderboards" element={<Leaderboards />} />
         <Route path="about" element={<About />} />
+        <Route path="terms" element={<Terms />} />
+        <Route path="privacy" element={<Privacy />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

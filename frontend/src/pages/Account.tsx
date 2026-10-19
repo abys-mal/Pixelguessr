@@ -12,9 +12,8 @@ import { PageHeading, SignInPrompt, StatusMessage } from '../components/ui';
 export function Profile() {
   const { user, loading } = useAuth();
   const { username } = useParams();
-  if (username)
-    return <RankedProfile key={username} username={username} own={user?.username === username} />;
   if (loading) return <StatusMessage>Loading profile…</StatusMessage>;
+  if (username) return <RankedProfile key={username} username={username} own={false} />;
   if (!user) return <SignInPrompt feature="view your profile" />;
   return <RankedProfile key={user.username} username={user.username} own />;
 }

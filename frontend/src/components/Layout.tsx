@@ -67,7 +67,11 @@ export function Layout() {
       <footer className="site-footer">
         <span>Find the bigger picture.</span>
         <span>Pixelguessr · Singleplayer · Parties · Ranked</span>
-        <Link to="/about">About & rules</Link>
+        <nav className="legal-links" aria-label="Information and policies">
+          <Link to="/about">About & rules</Link>
+          <Link to="/terms">Terms of Service</Link>
+          <Link to="/privacy">Privacy Policy</Link>
+        </nav>
       </footer>
     </div>
   );

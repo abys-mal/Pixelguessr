@@ -1,0 +1,89 @@
+.home-landing .hero {
+  padding: 48px 0;
+}
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 24px 0 14px;
+}
+.home-dashboard-heading {
+  padding: 28px 0 24px;
+}
+.home-dashboard-heading h1 {
+  font-size: clamp(28px, 4vw, 38px);
+  margin: 8px 0 0;
+}
+.home-dashboard .mode-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.home-dashboard .mode-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.home-dashboard .mode-card-top {
+  margin-bottom: 18px;
+}
+.home-dashboard .mode-card h2 {
+  font-size: 24px;
+  margin: 8px 0 12px;
+}
+.home-dashboard .card-meta {
+  margin: 12px 0 18px;
+}
+.home-dashboard .mode-link {
+  margin-top: auto;
+}
+.home-join-party {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+}
+.home-standing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px 24px;
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.home-standing p {
+  margin: 0;
+}
+.home-rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  text-transform: capitalize;
+}
+.home-rating span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.home-standing > a {
+  font-size: 13px;
+  padding: 8px 0;
+}
+@media (max-width: 760px) {
+  .home-dashboard .mode-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-dashboard .mode-card {
+    padding: 20px;
+  }
+  .home-dashboard .mode-card-top {
+    margin-bottom: 12px;
+  }
+  .home-standing {
+    padding: 18px;
+  }
+}

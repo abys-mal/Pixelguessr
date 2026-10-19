@@ -1,10 +1,45 @@
 import { Link } from 'react-router-dom';
 import { SanctionBanner } from '../components/SanctionBanner';
 import { modes } from '../modes';
+import { useAuth } from '../auth/context';
+import { RankIcon } from '../components/RankIcon';
+import { StatusMessage } from '../components/ui';
+import './home.css';
 
 export function Home() {
+  const { user, loading } = useAuth();
+  if (loading) return <StatusMessage>Loading your game dashboard…</StatusMessage>;
+  if (user)
+    return (
+      <div className="home-dashboard">
+        <SanctionBanner />
+        <header className="home-dashboard-heading">
+          <p className="eyebrow">CHOOSE YOUR NEXT GAME</p>
+          <h1>Play Pixelguessr</h1>
+        </header>
+        <section aria-label="Game modes">
+          <ModeCards dashboard />
+        </section>
+        <section className="home-standing" aria-label="Your ranked standing">
+          <div>
+            <p className="eyebrow">RANKED STANDING</p>
+            <p className="home-rating">
+              <strong>{user.rating} Elo</strong>
+              <RankIcon tier={user.ranked_tier} decorative />
+              <span>{user.ranked_tier || 'Unranked'}</span>
+            </p>
+            <p className="field-help">
+              {user.ranked_matches
+                ? `${user.ranked_matches} rated duels played`
+                : 'No rated duels yet. Your first match starts your history.'}
+            </p>
+          </div>
+          <Link to="/leaderboards">View standings →</Link>
+        </section>
+      </div>
+    );
   return (
-    <>
+    <div className="home-landing">
       <SanctionBanner />
       <section className="hero">
         <div className="hero-copy">
@@ -19,12 +54,20 @@ export function Home() {
             <br />A little more <em>instinct.</em>
           </h1>
           <p className="lede">
-            Every tile hides a clue. Watch the picture unfold,
-            <br className="desktop-break" /> connect the dots, and find the bigger picture.
+            Identify images as scattered tiles reveal the bigger picture.
+            <br className="desktop-break" /> Play at your own pace or race other players.
           </p>
-          <div className="hero-note">
-            <span>Singleplayer is here. A fresh picture is waiting.</span>
+          <div className="hero-actions">
+            <Link className="button" to="/register">
+              Create an account
+            </Link>
+            <Link className="button secondary" to="/singleplayer">
+              Try singleplayer
+            </Link>
           </div>
+          <p className="field-help">
+            Already playing? <Link to="/login">Sign in to your account</Link>
+          </p>
         </div>
         <figure className="reveal-art">
           <div className="art-label">
@@ -66,41 +109,7 @@ export function Home() {
           </div>
           <span className="muted">Same reveal. Different kind of thrill.</span>
         </div>
-        <div className="mode-grid">
-          {modes.map((mode, index) => (
-            <article key={mode.id} className={`mode-card ${mode.className}`}>
-              <div className="mode-card-top">
-                <span className="mode-icon" aria-hidden="true">
-                  {mode.icon}
-                </span>
-              </div>
-              <p className="eyebrow">{mode.eyebrow}</p>
-              <h3>{mode.label}</h3>
-              <p className="card-description">{mode.description}</p>
-              <p className="card-meta">{mode.meta}</p>
-              <Link
-                className="mode-link"
-                to={
-                  mode.id === 'singleplayer'
-                    ? '/singleplayer'
-                    : mode.id === 'party'
-                      ? '/party/new'
-                      : '/ranked'
-                }
-              >
-                {mode.id === 'singleplayer'
-                  ? 'Play singleplayer'
-                  : mode.id === 'party'
-                    ? 'Create Party'
-                    : 'Play Ranked Duel'}{' '}
-                <span aria-hidden="true">↗</span>
-              </Link>
-              <span className="card-number" aria-hidden="true">
-                0{index + 1}
-              </span>
-            </article>
-          ))}
-        </div>
+        <ModeCards />
       </section>
       <section className="foundation-strip">
         <div className="foundation-symbol" aria-hidden="true">
@@ -117,6 +126,68 @@ export function Home() {
           Contribute an image <span aria-hidden="true">↗</span>
         </Link>
       </section>
-    </>
+    </div>
+  );
+}
+
+function ModeCards({ dashboard = false }: { dashboard?: boolean }) {
+  const Title = dashboard ? 'h2' : 'h3';
+  return (
+    <div className="mode-grid">
+      {modes.map((mode, index) => (
+        <article key={mode.id} className={`mode-card ${mode.className}`}>
+          <div className="mode-card-top">
+            <span className="mode-icon" aria-hidden="true">
+              {mode.icon}
+            </span>
+          </div>
+          <p className="eyebrow">{mode.eyebrow}</p>
+          <Title>{mode.id === 'ranked' ? 'Ranked Duels' : mode.label}</Title>
+          <p className="card-description">
+            {dashboard
+              ? {
+                  singleplayer: 'Identify five images as their tiles reveal the picture.',
+                  party: 'Create a room or join friends for a shared guessing game.',
+                  ranked: 'Find an opponent and compete in a rated head-to-head match.',
+                }[mode.id]
+              : mode.description}
+          </p>
+          <p className="card-meta">
+            {dashboard
+              ? {
+                  singleplayer: 'Five rounds · Up to 5,000 points',
+                  party: 'A room for you and your friends',
+                  ranked: 'One guess · First to 4 wins',
+                }[mode.id]
+              : mode.meta}
+          </p>
+          <Link
+            className="mode-link"
+            to={
+              mode.id === 'singleplayer'
+                ? '/singleplayer'
+                : mode.id === 'party'
+                  ? '/party/new'
+                  : '/ranked'
+            }
+          >
+            {mode.id === 'singleplayer'
+              ? 'Play singleplayer'
+              : mode.id === 'party'
+                ? 'Create Party'
+                : 'Play Ranked Duel'}{' '}
+            <span aria-hidden="true">↗</span>
+          </Link>
+          {mode.id === 'party' && (
+            <Link className="home-join-party" to="/party/join">
+              Join a Party
+            </Link>
+          )}
+          <span className="card-number" aria-hidden="true">
+            0{index + 1}
+          </span>
+        </article>
+      ))}
+    </div>
   );
 }

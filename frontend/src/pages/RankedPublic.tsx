@@ -1,7 +1,7 @@
 import { PlayerIdentity } from '../components/PlayerIdentity';
 import { ReportPlayer } from '../components/ReportPlayer';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { api, type Page, type User } from '../api';
 import { Badge, PageHeading, StatusMessage } from '../components/ui';
 import { useAuth } from '../auth/context';
@@ -146,7 +146,7 @@ export function Leaderboards() {
   );
 }
 export function RankedProfile({ username, own }: { username: string; own: boolean }) {
-  const { signOut } = useAuth();
+  const { user: account, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const logoutRequest = useRef(false);
@@ -171,12 +171,15 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
   useEffect(() => {
     let disposed = false;
     void Promise.all([
-      api<Omit<User, 'email'>>(`/api/auth/profiles/${encodeURIComponent(username)}/`),
+      api<Omit<User, 'email'>>(`/api/auth/profiles/${encodeURIComponent(username)}/`).then(
+        (user) => {
+          if (!disposed) setProfile(user);
+        },
+      ),
       rankedApi.history(username, page),
     ])
-      .then(([user, matches]) => {
+      .then(([, matches]) => {
         if (!disposed) {
-          setProfile(user);
           setHistory(matches);
           setError('');
         }
@@ -188,6 +191,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
       disposed = true;
     };
   }, [username, page]);
+  if (!own && profile && account?.id === profile.id) return <Navigate to="/profile" replace />;
   if (error) return <StatusMessage error>{error}</StatusMessage>;
   if (!profile || !history) return <StatusMessage>Loading profile…</StatusMessage>;
   return (

@@ -82,6 +82,9 @@ export function Dialog({
       ref={ref}
       aria-labelledby={id}
       onCancel={(event) => {
+        // A file input's native picker cancellation bubbles too; it is not a
+        // request to close the containing dialog. Dialog Escape targets itself.
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         if (!pending) close();
       }}

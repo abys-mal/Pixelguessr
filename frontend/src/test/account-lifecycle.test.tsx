@@ -230,6 +230,7 @@ it.each(['moderator', 'protected', 'not_closed', 'self'])(
 );
 it('cleans up homepage availability text while retaining all primary actions', async () => {
   show('/');
+  await screen.findByRole('heading', { name: 'Play Pixelguessr' });
   expect(screen.queryByText('Playable', { exact: true })).not.toBeInTheDocument();
   expect(screen.queryByText('Ready to play', { exact: true })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Play Ranked Duel' })).toHaveAttribute('href', '/ranked');

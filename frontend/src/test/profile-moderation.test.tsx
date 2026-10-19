@@ -53,7 +53,7 @@ beforeEach(() => {
         };
       if (path === '/api/library/categories/') return [];
       if (path.startsWith('/api/auth/profiles/'))
-        return { ...user, username: path.includes('/other/') ? 'other' : user.username };
+        return path.includes('/other/') ? { ...user, id: 'other-id', username: 'other' } : user;
       if (path.startsWith('/api/ranked/history/'))
         return { count: 3, next: null, previous: null, results: rows };
       if (path === '/api/auth/logout/') {
