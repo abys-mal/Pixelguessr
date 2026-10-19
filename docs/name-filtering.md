@@ -28,6 +28,10 @@ position once instead of using a potentially exponential repeated-alternation
 regular expression. Package vocabulary/mapping access is confined to the adapter
 and covered by regression tests for the pinned package version.
 
+Pure x-runs are excluded only from joined-term detection: upstream's `xx`/`xxx`
+markers otherwise tile harmless long usernames. Upstream standalone checks still
+apply, and x-padded profanity continues through the normal combination checks.
+
 Only the authorized staff `change_names` operation uses `PlayerNamesInput` and its
 unfiltered assignment path. Existing format, length, uniqueness, permission checks,
 and audit logging still apply. A client flag, caller role, or self-service request

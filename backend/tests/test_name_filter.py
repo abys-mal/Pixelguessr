@@ -89,6 +89,45 @@ def test_ordinary_names_and_neutral_identity_terms_are_accepted(name):
     validate_player_name(name)
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("x" * 4, id="four-xs"),
+        pytest.param("x" * 5, id="five-xs"),
+        pytest.param("x" * 40, id="display-name-limit"),
+        pytest.param("x" * 149, id="149-xs"),
+        pytest.param("x" * 150, id="username-limit"),
+        pytest.param("X" * 150, id="uppercase-xs"),
+        pytest.param("ｘ" * 150, id="normalized-xs"),
+        pytest.param("a" * 150, id="repeated-a"),
+        pytest.param("z" * 150, id="repeated-z"),
+        pytest.param("1" * 150, id="repeated-digit"),
+    ],
+)
+def test_harmless_repeated_character_names_are_accepted(name):
+    validate_player_name(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("xx", id="standalone-xx"),
+        pytest.param("xxx", id="standalone-xxx"),
+        pytest.param("kkk" * 50, id="substantive-repeated-term"),
+        pytest.param("fuck" + "x" * 146, id="x-suffix"),
+        pytest.param("x" * 146 + "fuck", id="x-prefix"),
+        pytest.param("xxfuckxxx", id="x-surrounded"),
+        pytest.param("x" * 142 + "fuckshit", id="joined-with-x-prefix"),
+        pytest.param("fuckshit" + "x" * 142, id="joined-with-x-suffix"),
+        pytest.param("xxfvck5h1txxx", id="obfuscated-joined-with-padding"),
+        pytest.param("x" * 100 + ".f.u.c.k", id="spelled-word-with-padding"),
+    ],
+)
+def test_x_run_exception_does_not_hide_prohibited_names(name):
+    with pytest.raises(ValidationError, match="This name isn't allowed"):
+        validate_player_name(name)
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("field", ["username", "display_name"])
 @pytest.mark.parametrize("name", ["Sh1t", "fuckshit", "shitfuck", "fuckfuck", "sh1tfvck"])

@@ -59,6 +59,9 @@ def assign(request, client, user):
         "-player",
         "player.name+tag@123",
         "x" * 150,
+        "a" * 150,
+        "z" * 150,
+        "1" * 150,
     ],
 )
 def test_valid_usernames_in_both_flows(assign, username):

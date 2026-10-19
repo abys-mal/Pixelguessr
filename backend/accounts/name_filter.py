@@ -51,6 +51,11 @@ def joined_terms(token, *, edge=False, reverse=False):
     repeated short term. Bounded segmentation avoids a backtracking repetition
     over the package's overlapping leetspeak variants.
     """
+    # Upstream's 'xx'/'xxx' markers can tile any long x-run, but that is not a
+    # combination of words. Keep upstream's standalone checks and mixed-token
+    # detection (including real profanity padded with x's) unchanged.
+    if not token.strip("x"):
+        return False
     if reverse:
         token = token[::-1]
     parts = [-1] * (len(token) + 1)
