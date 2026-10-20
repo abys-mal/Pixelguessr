@@ -491,6 +491,9 @@ describe('Ranked duel', () => {
   it('shows public leaderboard positions and profile links without an Unranked badge', async () => {
     vi.mocked(rankedApi.leaderboard).mockResolvedValue({
       count: 1,
+      page: 1,
+      page_size: 24,
+      total_pages: 1,
       next: null,
       previous: null,
       my_position: 1,
@@ -510,6 +513,9 @@ describe('Ranked duel', () => {
     ];
     vi.mocked(rankedApi.leaderboard).mockResolvedValue({
       count: 4,
+      page: 1,
+      page_size: 24,
+      total_pages: 1,
       next: null,
       previous: null,
       my_position: null,
@@ -542,6 +548,9 @@ describe('Ranked duel', () => {
       vi.mocked(api).mockResolvedValue({ ...user, rating, ranked_tier: tier });
       vi.mocked(rankedApi.history).mockResolvedValue({
         count: 0,
+        page: 1,
+        page_size: 24,
+        total_pages: 0,
         next: null,
         previous: null,
         results: [],
@@ -566,6 +575,9 @@ describe('Ranked duel', () => {
     vi.mocked(api).mockResolvedValue(user);
     vi.mocked(rankedApi.history).mockResolvedValue({
       count: 1,
+      page: 1,
+      page_size: 24,
+      total_pages: 1,
       next: null,
       previous: null,
       results: [
@@ -596,15 +608,25 @@ describe('Ranked duel', () => {
 
 it('pagination preserves centered slots when disabled and handles page navigation', () => {
   const change = vi.fn();
-  const view = render(<Pagination page={1} next="page2" previous={null} onPage={change} />);
+  const view = render(
+    <Pagination
+      pagination={{ page: 1, total_pages: 2, next: 'page2', previous: null }}
+      onPage={change}
+    />,
+  );
   expect(screen.getByRole('navigation', { name: 'Page navigation' })).toHaveClass(
     'ranked-pagination',
   );
   expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(change).toHaveBeenLastCalledWith(2);
-  view.rerender(<Pagination page={2} next={null} previous="page1" onPage={change} />);
-  expect(screen.getByText('Page 2')).toBeInTheDocument();
+  view.rerender(
+    <Pagination
+      pagination={{ page: 2, total_pages: 2, next: null, previous: 'page1' }}
+      onPage={change}
+    />,
+  );
+  expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
   expect(change).toHaveBeenLastCalledWith(1);

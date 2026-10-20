@@ -77,6 +77,10 @@ beforeEach(() => {
         const filtered = rows.filter((row) => status === 'all' || row.status === status);
         return {
           ...list(filtered),
+          count: filtered.length ? 25 : 0,
+          page: Number(params.get('page')),
+          page_size: 24,
+          total_pages: filtered.length ? 2 : 0,
           next: params.get('page') === '1' ? '?page=2' : null,
           previous: params.get('page') === '2' ? '?page=1' : null,
           stats: {

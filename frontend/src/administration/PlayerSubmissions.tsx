@@ -8,6 +8,7 @@ import {
   sourceLabel,
 } from '../contributions/api';
 import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
 import { Dialog, Feedback, Heading, Loading, Pager } from '../moderation/components';
 import { adminRoot, send } from './api';
 import { DeleteImage } from './DeleteImage';
@@ -340,8 +341,9 @@ export function PlayerSubmissions() {
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Contribution | null>(null);
   const [message, setMessage] = useState('');
-  const { data, error, reload } = useData<Page<Contribution>>(
+  const { data, error, reload } = usePageData<Page<Contribution>>(
     `${adminRoot}player-submissions/?status=${status}&page=${page}&q=${encodeURIComponent(q)}`,
+    setPage,
   );
   return (
     <>
@@ -430,7 +432,7 @@ export function PlayerSubmissions() {
               ))}
             </ul>
           )}
-          <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+          <Pager pagination={data} change={setPage} />
         </>
       )}
       {selected && (

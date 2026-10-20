@@ -4,6 +4,8 @@ import type { Category } from '../api';
 import { useAuth } from '../auth/context';
 import { PageHeading, SignInPrompt, StatusMessage } from '../components/ui';
 import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
+import { PageNavigation } from '../components/Pagination';
 import {
   contributionRoot,
   contributionStatuses,
@@ -27,8 +29,9 @@ function ContributionDashboard() {
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState('');
   const [message, setMessage] = useState('');
-  const { data, error, reload } = useData<ContributionPage>(
+  const { data, error, reload } = usePageData<ContributionPage>(
     `${contributionRoot}?status=${status}&page=${page}`,
+    setPage,
   );
   const {
     data: categories,
@@ -162,25 +165,12 @@ function ContributionDashboard() {
               </p>
             </section>
           )}
-          <nav className="contribution-pagination" aria-label="Contribution pages">
-            <button
-              className="button secondary"
-              disabled={!data.previous}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </button>
-            <span>
-              Page {page} · {data.count} contributions
-            </span>
-            <button
-              className="button secondary"
-              disabled={!data.next}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </button>
-          </nav>
+          <PageNavigation
+            pagination={data}
+            onPage={setPage}
+            className="contribution-pagination"
+            label="Contribution pages"
+          />
         </>
       )}
       {creating && categories && (

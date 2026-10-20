@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { PageNavigation, type PaginationInfo } from '../components/Pagination';
 
 export function Feedback({ error, message }: { error?: string; message?: string }) {
   return (
@@ -107,25 +108,19 @@ export function Dialog({
 }
 
 export function Pager({
-  page,
-  next,
-  previous,
+  pagination,
   change,
 }: {
-  page: number;
-  next: string | null;
-  previous: string | null;
+  pagination: PaginationInfo;
   change: (page: number) => void;
 }) {
   return (
-    <nav className="mod-pager" aria-label="Pagination">
-      <button className="mod-button subtle" disabled={!previous} onClick={() => change(page - 1)}>
-        Previous
-      </button>
-      <span>Page {page}</span>
-      <button className="mod-button subtle" disabled={!next} onClick={() => change(page + 1)}>
-        Next
-      </button>
-    </nav>
+    <PageNavigation
+      pagination={pagination}
+      onPage={change}
+      className="mod-pager"
+      buttonClassName="mod-button subtle"
+      label="Pagination"
+    />
   );
 }

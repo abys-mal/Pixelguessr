@@ -8,10 +8,10 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.debug import sensitive_post_parameters
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from accounts.models import User
+from config.pagination import ResilientPageNumberPagination as PageNumberPagination
 from games.models import Match, Round
 from games.reveal import render_reveal
 from library.models import ImageSubmission, ImportBatch, ImportItem

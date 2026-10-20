@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type Page } from '../api';
 import { Feedback, Heading, Loading, Pager } from '../moderation/components';
-import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
 import { adminRoot, send, type Batch, type ImportItem, type LibraryImage } from './api';
 import { ImageEditor } from './Images';
 
@@ -45,8 +45,9 @@ export function ImageImports() {
     data,
     error: loadError,
     reload,
-  } = useData<Page<Batch> | Page<ImportItem>>(
+  } = usePageData<Page<Batch> | Page<ImportItem>>(
     `${adminRoot}imports/${id ? `${id}/` : ''}?page=${page}`,
+    setPage,
   );
   const upload = async () => {
     if (!id || saving.current || !files.length) return;
@@ -296,7 +297,7 @@ export function ImageImports() {
               {id ? 'No uploads yet. This batch is saved.' : 'No browser import batches yet.'}
             </p>
           )}
-          <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+          <Pager pagination={data} change={setPage} />
         </>
       )}
       {editing && <ImageEditor image={editing} close={() => setEditing(null)} saved={reload} />}

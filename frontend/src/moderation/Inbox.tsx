@@ -3,7 +3,7 @@ import type { Page } from '../api';
 import { root, post, label, date, expiry, type Appeal, type Report } from './api';
 import { Dialog, Feedback, Heading, Loading, Pager } from './components';
 import { PlayerDetail } from './Player';
-import { useData } from './useData';
+import { usePageData } from './usePageData';
 
 export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
   const [filter, setFilter] = useState('pending');
@@ -15,8 +15,9 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const kind = appeals ? 'appeals' : 'reports';
-  const { data, error, reload } = useData<Page<Report | Appeal>>(
+  const { data, error, reload } = usePageData<Page<Report | Appeal>>(
     `${root}${kind}/?status=${filter}&page=${page}`,
+    setPage,
   );
   const item = data?.results.find((row) => row.id === selected) ?? data?.results[0];
   const player = item ? ('player' in item ? item.player : item.subject) : null;
@@ -107,7 +108,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
                 </span>
               </button>
             ))}
-            <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+            <Pager pagination={data} change={setPage} />
           </section>
           {item && player && (
             <div className="mod-inbox-detail" key={item.id}>

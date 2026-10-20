@@ -109,7 +109,7 @@ REST_FRAMEWORK = {
         "game_read": "600/minute",
         "game_guess": "600/minute",
     },
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.ResilientPageNumberPagination",
     "PAGE_SIZE": 24,
     "NUM_PROXIES": 0,  # Adjust ONLY to the actual trusted reverse-proxy topology.
 }

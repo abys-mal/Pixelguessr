@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import type { Page } from '../api';
 import { PlayerIdentity } from '../components/PlayerIdentity';
 import { Dialog, Feedback, Heading, Loading, Pager } from '../moderation/components';
-import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
 import type { Player } from '../moderation/api';
 import { adminRoot, send } from './api';
 
@@ -19,10 +19,15 @@ export function StaffRoles() {
   const [role, setRole] = useState('all');
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
-  const { data, error, reload } = useData<Page<StaffPlayer>>(
+  const [searchPage, setSearchPage] = useState(1);
+  const { data, error, reload } = usePageData<Page<StaffPlayer>>(
     `${adminRoot}staff/?role=${role}&page=${page}`,
+    setPage,
   );
-  const search = useData<Page<Player>>(`${adminRoot}players/?q=${encodeURIComponent(q)}`);
+  const search = usePageData<Page<Player>>(
+    `${adminRoot}players/?q=${encodeURIComponent(q)}&page=${searchPage}`,
+    setSearchPage,
+  );
   const [target, setTarget] = useState<{ player: Player; enabled: boolean } | null>(null);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -39,6 +44,7 @@ export function StaffRoles() {
       setMessage(target.enabled ? 'Moderator access granted.' : 'Moderator access removed.');
       setTarget(null);
       setQ('');
+      setSearchPage(1);
       reload();
       search.reload();
     } catch (e) {
@@ -65,6 +71,7 @@ export function StaffRoles() {
           onSubmit={(e) => {
             e.preventDefault();
             setQ(String(new FormData(e.currentTarget).get('username') ?? ''));
+            setSearchPage(1);
           }}
         >
           <label>
@@ -97,6 +104,7 @@ export function StaffRoles() {
           ))}
         </ul>
         {q && search.data && !search.data.count && <p>No ordinary players match.</p>}
+        {q && search.data && <Pager pagination={search.data} change={setSearchPage} />}
       </section>
       <section className="mod-card" aria-labelledby="current-staff-heading">
         <h2 id="current-staff-heading">Current Staff</h2>
@@ -166,7 +174,7 @@ export function StaffRoles() {
               ))}
             </ul>
             {!data.count && <p className="mod-empty">No staff match this filter.</p>}
-            <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+            <Pager pagination={data} change={setPage} />
           </>
         )}
       </section>

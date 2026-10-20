@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { type Category, type Page } from '../api';
 import { Dialog, Feedback, Heading, Loading, Pager } from '../moderation/components';
 import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
 import { adminRoot, send, type LibraryImage } from './api';
 import { DeleteImage } from './DeleteImage';
 import { PlayerSubmissions, ImageLibraryTabs } from './PlayerSubmissions';
@@ -190,11 +191,21 @@ function GeneralImageLibrary() {
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const status = params.get('status') ?? '';
-  const page = Number(params.get('page') ?? 1);
-  const { data, error, reload } = useData<Page<LibraryImage>>(
-    `${adminRoot}images/?${params.toString()}`,
-  );
   const [selected, setSelected] = useState<string[]>([]);
+  const { data, error, reload } = usePageData<Page<LibraryImage>>(
+    `${adminRoot}images/?${params.toString()}`,
+    (page) => {
+      setSelected([]);
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.set('page', String(page));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+  );
   const [editing, setEditing] = useState<LibraryImage | null>(null);
   const [operation, setOperation] = useState('');
   const [pending, setPending] = useState(false);
@@ -260,7 +271,13 @@ function GeneralImageLibrary() {
         onSubmit={(e) => {
           e.preventDefault();
           const form = new FormData(e.currentTarget);
-          setParams({ q: String(form.get('q')), status: String(form.get('status')), page: '1' });
+          setParams((previous) => {
+            const next = new URLSearchParams(previous);
+            next.set('q', String(form.get('q')));
+            next.set('status', String(form.get('status')));
+            next.set('page', '1');
+            return next;
+          });
           setSelected([]);
         }}
       >
@@ -397,12 +414,14 @@ function GeneralImageLibrary() {
           </div>
           {!data.count && <p className="mod-card mod-empty">No images match these filters.</p>}
           <Pager
-            page={page}
-            next={data.next}
-            previous={data.previous}
+            pagination={data}
             change={(value) => {
               setSelected([]);
-              setParams({ q, status, page: String(value) });
+              setParams((previous) => {
+                const next = new URLSearchParams(previous);
+                next.set('page', String(value));
+                return next;
+              });
             }}
           />
         </>

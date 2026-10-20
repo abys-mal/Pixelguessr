@@ -2,13 +2,15 @@ import { useState } from 'react';
 import type { Page } from '../api';
 import { Heading, Loading, Pager } from '../moderation/components';
 import { useData } from '../moderation/useData';
+import { usePageData } from '../moderation/usePageData';
 import { adminRoot, type AuditEntry, type HealthCheck } from './api';
 import { ActivityList, HealthList } from './Overview';
 
 export function AuditLog() {
   const [filters, setFilters] = useState({ q: '', action: '', target_type: '', page: '1' });
-  const { data, error, reload } = useData<Page<AuditEntry>>(
+  const { data, error, reload } = usePageData<Page<AuditEntry>>(
     `${adminRoot}audit/?${new URLSearchParams(filters)}`,
+    (page) => setFilters((previous) => ({ ...previous, page: String(page) })),
   );
   return (
     <>
@@ -53,9 +55,7 @@ export function AuditLog() {
           <ActivityList entries={data.results} />
           {!data.count && <p className="mod-empty">No audit records match.</p>}
           <Pager
-            page={Number(filters.page)}
-            next={data.next}
-            previous={data.previous}
+            pagination={data}
             change={(value) => setFilters({ ...filters, page: String(value) })}
           />
         </section>

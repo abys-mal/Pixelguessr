@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { api, type User } from '../api';
@@ -53,8 +53,12 @@ let calls: [string, RequestInit | undefined][];
 let notice: object | null;
 let images: (typeof photo)[];
 let rejectError: string;
+let paginateImages: boolean;
 const page = (rows: unknown[]) => ({
   count: rows.length,
+  page: 1,
+  page_size: 24,
+  total_pages: rows.length ? 1 : 0,
   next: null,
   previous: null,
   results: rows,
@@ -65,6 +69,7 @@ beforeEach(() => {
   notice = null;
   images = [{ ...photo }];
   rejectError = '';
+  paginateImages = false;
   URL.createObjectURL = vi.fn().mockReturnValue('blob:import-preview');
   URL.revokeObjectURL = vi.fn();
   HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -135,7 +140,24 @@ beforeEach(() => {
         ]);
       if (path.startsWith(root + 'players/?'))
         return page(path.includes('imagehunter') ? [player] : []);
-      if (path.startsWith(root + 'images/?')) return page(images);
+      if (path.startsWith(root + 'images/?')) {
+        if (!paginateImages) return page(images);
+        const params = new URLSearchParams(path.split('?')[1]);
+        const filtered = images.filter(
+          (image) => !params.get('status') || image.status === params.get('status'),
+        );
+        const total = Math.ceil(filtered.length / 24);
+        const current = Math.max(1, Math.min(Number(params.get('page')) || 1, total));
+        return {
+          count: filtered.length,
+          page: current,
+          page_size: 24,
+          total_pages: total,
+          next: current < total ? '?page=' + (current + 1) : null,
+          previous: current > 1 ? '?page=' + (current - 1) : null,
+          results: filtered.slice((current - 1) * 24, current * 24),
+        };
+      }
       if (path === root + 'images/photo-id/') {
         const changes = JSON.parse(String(options?.body ?? '{}'));
         return {
@@ -147,8 +169,13 @@ beforeEach(() => {
       if (path === root + 'images/review/') {
         if (rejectError)
           return { results: [{ id: 'photo-id', status: 'failed', error: rejectError }] };
-        if (JSON.parse(String(options?.body)).operation === 'reject')
-          images = images.map((image) => ({ ...image, status: 'rejected' }));
+        const { ids, operation } = JSON.parse(String(options?.body));
+        if (['approve', 'reject'].includes(operation))
+          images = images.map((image) =>
+            ids.includes(image.id)
+              ? { ...image, status: operation === 'approve' ? 'approved' : 'rejected' }
+              : image,
+          );
         return { results: [{ id: 'photo-id', status: 'success' }] };
       }
       if (path === root + 'announcement/') return { announcement: notice };
@@ -194,11 +221,16 @@ beforeEach(() => {
       return {};
     });
 });
+function PaginationRoute() {
+  const location = useLocation();
+  return <output aria-label="Pagination route">{location.pathname + location.search}</output>;
+}
 function show(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
         <App />
+        <PaginationRoute />
       </AuthProvider>
     </MemoryRouter>,
   );
@@ -426,6 +458,43 @@ it('rejects a pending image immediately and refreshes the badge without a confir
     operation: 'reject',
   });
 });
+it.each([
+  ['approve', 1],
+  ['approve', 2],
+  ['reject', 1],
+  ['reject', 2],
+] as const)(
+  'recovers page five after %s removes %s pending images and preserves URL filters',
+  async (operation, removed) => {
+    paginateImages = true;
+    images = Array.from({ length: 96 + removed }, (_, index) => ({
+      ...photo,
+      id: 'image-' + index,
+    }));
+    show('/moderation/administration/images?status=pending&q=rose&sort=oldest&page=5');
+    await screen.findByText('Page 5 of 5');
+    if (operation === 'reject' && removed === 1) {
+      await userEvent.click(screen.getByRole('button', { name: 'Reject pending image' }));
+    } else {
+      for (const checkbox of screen.getAllByRole('checkbox', { name: 'Select rose' }))
+        await userEvent.click(checkbox);
+      await userEvent.click(
+        within(screen.getByText(`${removed} selected`).parentElement!).getByRole('button', {
+          name: operation === 'approve' ? 'Approve' : 'Reject',
+        }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    }
+    await screen.findByText('Page 4 of 4');
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pagination route')).toHaveTextContent(
+        'status=pending&q=rose&sort=oldest&page=4',
+      ),
+    );
+    expect(calls.filter(([path]) => path.startsWith(root + 'images/?'))).toHaveLength(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  },
+);
 it('preserves approval confirmation and submits the selected image', async () => {
   show('/moderation/administration/images');
   const reject = await screen.findByRole('button', { name: 'Reject pending image' });
@@ -440,6 +509,34 @@ it('preserves approval confirmation and submits the selected image', async () =>
     operation: 'approve',
     reason: '',
   });
+});
+it('recovers a stale URL and keeps the page when a rejection leaves it valid', async () => {
+  paginateImages = true;
+  images = Array.from({ length: 26 }, (_, index) => ({ ...photo, id: 'image-' + index }));
+  show('/moderation/administration/images?status=pending&q=rose&page=999');
+  await screen.findByText('Page 2 of 2');
+  await waitFor(() =>
+    expect(screen.getByLabelText('Pagination route')).toHaveTextContent('page=2'),
+  );
+  expect(calls.filter(([path]) => path.startsWith(root + 'images/?'))).toHaveLength(1);
+  await userEvent.click(screen.getAllByRole('button', { name: 'Reject pending image' })[0]);
+  await screen.findByText('Pending image rejected.');
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: 'Reject pending image' })).toHaveLength(1),
+  );
+  expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+  expect(screen.getByLabelText('Pagination route')).toHaveTextContent('page=2');
+});
+it('shows the empty filtered library without pagination after its final rejection', async () => {
+  paginateImages = true;
+  show('/moderation/administration/images?status=pending&q=rose&page=1');
+  await userEvent.click(await screen.findByRole('button', { name: 'Reject pending image' }));
+  await screen.findByText('No images match these filters.');
+  expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Pagination route')).toHaveTextContent(
+    'status=pending&q=rose&page=1',
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 it.each(['Approve', 'Reject', 'Retire', 'Restore'])(
   '%s confirmation uses singular wording for one image and plural for multiple images',

@@ -5,64 +5,28 @@ import { Link, Navigate } from 'react-router-dom';
 import { api, type Page, type User } from '../api';
 import { Badge, PageHeading, StatusMessage } from '../components/ui';
 import { useAuth } from '../auth/context';
-import { rankedApi, type Standing, type HistoryEntry } from '../games/ranked';
+import { rankedApi, type HistoryEntry } from '../games/ranked';
 import { RankIcon } from '../components/RankIcon';
 import './ranked-presentation.css';
+import { PageNavigation, type PaginationInfo } from '../components/Pagination';
+import { usePageData } from '../moderation/usePageData';
 export function Pagination({
-  page,
-  next,
-  previous,
+  pagination,
   onPage,
 }: {
-  page: number;
-  next: string | null;
-  previous: string | null;
+  pagination: PaginationInfo;
   onPage: (page: number) => void;
 }) {
-  return (
-    <nav className="ranked-pagination" aria-label="Page navigation">
-      <button className="button secondary" disabled={!previous} onClick={() => onPage(page - 1)}>
-        Previous
-      </button>
-      <span>Page {page}</span>
-      <button className="button secondary" disabled={!next} onClick={() => onPage(page + 1)}>
-        Next
-      </button>
-    </nav>
-  );
+  return <PageNavigation pagination={pagination} onPage={onPage} />;
 }
 export function Leaderboards() {
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<
-    | (Page<Standing> & {
-        my_position: number | null;
-        tiers?: [number, string][];
-        starting_elo?: number;
-      })
-    | null
-  >(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let disposed = false;
-    void rankedApi
-      .leaderboard(page)
-      .then((next) => {
-        if (!disposed) {
-          setData(next);
-          setError('');
-        }
-      })
-      .catch((err: Error) => {
-        if (!disposed) setError(err.message);
-      })
-      .finally(() => {
-        if (!disposed) setLoading(false);
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [page]);
+  const { data, error } = usePageData<Awaited<ReturnType<typeof rankedApi.leaderboard>>>(
+    `/api/ranked/leaderboard/?page=${page}`,
+    setPage,
+    () => rankedApi.leaderboard(page),
+  );
+  const loading = !data && !error;
   return (
     <>
       <PageHeading eyebrow="A PLACE TO RISE" title="Leaderboards">
@@ -114,15 +78,7 @@ export function Leaderboards() {
               The first rated duel is still ahead. <Link to="/ranked">Find an opponent.</Link>
             </p>
           )}
-          <Pagination
-            page={page}
-            next={data.next}
-            previous={data.previous}
-            onPage={(value) => {
-              setLoading(true);
-              setPage(value);
-            }}
-          />
+          <Pagination pagination={data} onPage={setPage} />
         </section>
       )}
       <section className="panel tier-panel">
@@ -165,22 +121,19 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
     }
   };
   const [profile, setProfile] = useState<Omit<User, 'email'> | null>(null);
-  const [history, setHistory] = useState<Page<HistoryEntry> | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
+  const { data: history, error: historyError } = usePageData<Page<HistoryEntry>>(
+    `/api/ranked/history/${encodeURIComponent(username)}/?page=${page}`,
+    setPage,
+    () => rankedApi.history(username, page),
+  );
   useEffect(() => {
     let disposed = false;
-    void Promise.all([
-      api<Omit<User, 'email'>>(`/api/auth/profiles/${encodeURIComponent(username)}/`).then(
-        (user) => {
-          if (!disposed) setProfile(user);
-        },
-      ),
-      rankedApi.history(username, page),
-    ])
-      .then(([, matches]) => {
+    void api<Omit<User, 'email'>>(`/api/auth/profiles/${encodeURIComponent(username)}/`)
+      .then((user) => {
         if (!disposed) {
-          setHistory(matches);
+          setProfile(user);
           setError('');
         }
       })
@@ -190,9 +143,9 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
     return () => {
       disposed = true;
     };
-  }, [username, page]);
+  }, [username]);
   if (!own && profile && account?.id === profile.id) return <Navigate to="/profile" replace />;
-  if (error) return <StatusMessage error>{error}</StatusMessage>;
+  if (error || historyError) return <StatusMessage error>{error || historyError}</StatusMessage>;
   if (!profile || !history) return <StatusMessage>Loading profile…</StatusMessage>;
   return (
     <>
@@ -284,7 +237,7 @@ export function RankedProfile({ username, own }: { username: string; own: boolea
         ) : (
           <p className="muted">No completed duels yet.</p>
         )}
-        <Pagination page={page} next={history.next} previous={history.previous} onPage={setPage} />
+        <Pagination pagination={history} onPage={setPage} />
       </section>
     </>
   );

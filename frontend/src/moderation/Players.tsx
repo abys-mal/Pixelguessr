@@ -4,15 +4,16 @@ import { Link, useLocation } from 'react-router-dom';
 import type { Page } from '../api';
 import { root, type Player } from './api';
 import { Heading, Loading, Pager, Feedback } from './components';
-import { useData } from './useData';
+import { usePageData } from './usePageData';
 
 export function ModerationPlayers() {
   const location = useLocation();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const { data, error, reload } = useData<Page<Player>>(
+  const { data, error, reload } = usePageData<Page<Player>>(
     `${root}players/?q=${encodeURIComponent(query)}&page=${page}`,
+    setPage,
   );
   return (
     <>
@@ -74,7 +75,7 @@ export function ModerationPlayers() {
               </Link>
             ))}
           </div>
-          <Pager page={page} next={data.next} previous={data.previous} change={setPage} />
+          <Pager pagination={data} change={setPage} />
         </section>
       )}
     </>

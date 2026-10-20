@@ -3,13 +3,13 @@ from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from rest_framework import serializers
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.permissions import AccountAccess, CanSubmitImages
+from config.pagination import ResilientPageNumberPagination as PageNumberPagination
 from moderation.permissions import is_administrator
 
 from .contributions import contribution_data, create_contribution, history_item, history_rows
