@@ -121,11 +121,11 @@ console.log(response.status, await response.json());
 
 ### Warnings
 
-- As moderator, add a sanction for `audit_player`: Fair Play, Warning, a clearly marked synthetic reason, and current start time. Leave expiry blank. **Expected:** issuer is assigned server-side and expiry is exactly start + 90 days.
+- As moderator, add a sanction for `audit_player`: Fair Play, Warning, a clearly marked synthetic reason, and current start time. Leave expiry blank. **Expected:** issuer is assigned server-side; no automatic expiry before acknowledgment.
 - Refresh the player's game page. **Expected:** a notice banner; Account settings shows the reason and Acknowledge warning.
-- Before acknowledgment, try Ranked, party membership, image submission, and another report. **Expected:** all allowed; warnings only create notices.
-- Acknowledge the warning. **Expected:** the restriction banner disappears after authentication refresh; the notice remains marked Acknowledged until expiry/revocation. Repeated acknowledgment retains its first timestamp. Another player cannot acknowledge it.
-- For an expiry check, create a separate warning beginning 91 days ago. **Expected:** stored for history, absent from active notices and restrictions.
+- Before acknowledgment, try new Ranked entry, party hosting/joining, image submission, and another report. **Expected:** new game entry and contributions denied; reporting, account support, singleplayer and ongoing games allowed.
+- Acknowledge the warning. **Expected:** entry restrictions and the banner clear; expiry is exactly acknowledgment + 90 days. The notice remains marked Acknowledged until expiry/revocation. Repeated acknowledgment retains its first timestamp and expiry. Another player cannot acknowledge it.
+- For an expiry check in an isolated test database, use a warning acknowledged 91 days ago. **Expected:** historical and inactive. An unacknowledged warning issued 91 days ago remains active. Reversing it immediately removes its gate without requiring acknowledgment.
 
 ### Probation, suspension, and closure
 

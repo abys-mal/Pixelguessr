@@ -333,21 +333,24 @@ it('keeps entered data and displays failed upload validation', async () => {
   expect(await dialog.findByRole('alert')).toHaveTextContent(fail);
   expect(dialog.getByLabelText('Canonical answer')).toHaveValue('fox');
 });
-it('lets restricted players read history while disabling new submissions', async () => {
-  current = {
-    user: owner,
-    restrictions: {
-      blocked: false,
-      probation: true,
-      suspension: false,
-      unacknowledged_warnings: [],
-    },
-  };
-  show();
-  await screen.findByRole('button', { name: /red panda/ });
-  expect(screen.getByRole('button', { name: '+ New Submission' })).toBeDisabled();
-  expect(screen.getByRole('link', { name: 'View account notices' })).toBeInTheDocument();
-});
+it.each(['probation', 'warning'])(
+  'lets players with %s read history while disabling new submissions',
+  async (kind) => {
+    current = {
+      user: owner,
+      restrictions: {
+        blocked: false,
+        probation: kind === 'probation',
+        suspension: false,
+        unacknowledged_warnings: kind === 'warning' ? ['warning'] : [],
+      },
+    };
+    show();
+    await screen.findByRole('button', { name: /red panda/ });
+    expect(screen.getByRole('button', { name: '+ New Submission' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'View account notices' })).toBeInTheDocument();
+  },
+);
 it('provides retry on history failure and a polished empty state', async () => {
   fail = 'history';
   show();

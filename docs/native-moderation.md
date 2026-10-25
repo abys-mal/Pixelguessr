@@ -43,7 +43,9 @@ paths to Django/admin static assets as described in the README.
 ## Sanctions and appeals
 
 Public reason and internal note are optional. Players see a neutral notice when
-the public reason is empty. Warnings expire after 90 days; probation/suspension
+the public reason is empty. Warnings expire 90 days after acknowledgment and block
+new ranked/party entry and image contributions until acknowledged; ongoing games
+can finish. Reversed warnings impose no gate. Probation/suspension
 may have a chosen future expiry or no expiry. Closure has no expiry. Unlimited
 warnings are allowed; other kinds permit one active sanction each. Scheduled
 non-warning sanctions also reserve that type to prevent future overlap.

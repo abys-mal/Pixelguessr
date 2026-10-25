@@ -232,7 +232,7 @@ def test_admin_issues_sanction_with_server_owned_actor_and_addition_log(client, 
     sanction = Sanction.objects.get(user=user)
     assert sanction.kind == kind and sanction.issued_by_id == staff.pk
     if kind == "warning":
-        assert sanction.expires_at == sanction.starts_at + timedelta(days=90)
+        assert sanction.expires_at is None and sanction.acknowledged_at is None
     if kind == "closed":
         assert sanction.expires_at is None
     assert LogEntry.objects.get(object_id=str(sanction.pk)).user_id == staff.pk

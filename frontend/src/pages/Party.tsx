@@ -5,6 +5,8 @@ import { useAuth } from '../auth/context';
 import { Reveal } from '../games/Reveal';
 import { partyApi, type PartyState, type PartyScore } from '../games/parties';
 import { useParty } from '../games/useParty';
+import { SanctionAccessNotice } from '../components/SanctionAccessNotice';
+import { restrictedSanction } from '../components/sanctionAccess';
 
 function PartyLinks() {
   return (
@@ -72,6 +74,8 @@ function PlayingIdentity() {
   );
 }
 export function PartyEntry({ create = false }: { create?: boolean }) {
+  const { restrictions } = useAuth();
+  const restricted = !!restrictedSanction(restrictions, 'party');
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [seconds, setSeconds] = useState(30);
@@ -82,6 +86,7 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
   const lock = useRef(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (restricted) return;
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
@@ -110,19 +115,21 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
         <h1>{create ? 'Create Party' : 'Join Party'}</h1>
         <form onSubmit={(event) => void submit(event)}>
           <PlayingIdentity />
+          <SanctionAccessNotice feature="party" />
           {create ? (
             <SettingsFields
               seconds={seconds}
               rounds={rounds}
               onSeconds={setSeconds}
               onRounds={setRounds}
-              disabled={busy}
+              disabled={busy || restricted}
             />
           ) : (
             <label>
               Party code
               <input
                 name="code"
+                disabled={busy || restricted}
                 className="party-code-input"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -140,7 +147,7 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
               {error}
             </p>
           )}
-          <button className="button" disabled={busy}>
+          <button className="button" disabled={busy || restricted}>
             {busy ? 'Opening…' : create ? 'Create Party' : 'Join Party'}
           </button>
         </form>

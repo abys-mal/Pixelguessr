@@ -167,10 +167,14 @@ def test_warning_exact_expiration_boundary(user, staff, monkeypatch, offset, act
         kind="warning",
         category="fair_play",
         reason="Boundary",
-        starts_at=now - timedelta(days=offset),
+        starts_at=now - timedelta(days=offset + 20),
+        acknowledged_at=now - timedelta(days=offset),
     )
-    assert warning.expires_at == warning.starts_at + timedelta(days=90)
-    assert bool(account_restrictions(user)["unacknowledged_warnings"]) is active
+    assert warning.expires_at == warning.acknowledged_at + timedelta(days=90)
+    from moderation.services import active_sanctions
+
+    assert active_sanctions(user).filter(pk=warning.pk).exists() is active
+    assert not account_restrictions(user)["unacknowledged_warnings"]
 
 
 def test_scheduled_expired_and_revoked_sanctions(client, user, staff, monkeypatch):

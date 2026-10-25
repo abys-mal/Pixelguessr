@@ -32,6 +32,12 @@ function SanctionDates({ notice }: { notice: AccountSanction }) {
             <time dateTime={notice.expires_at}>{noticeDate(notice.expires_at)}</time>
           ) : notice.kind === 'closed' ? (
             'Permanent'
+          ) : notice.kind === 'warning' ? (
+            notice.revoked_at ? (
+              'Reversed before acknowledgment'
+            ) : (
+              '90 days after acknowledgment'
+            )
           ) : (
             'Indefinite'
           )}

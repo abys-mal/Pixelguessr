@@ -89,4 +89,6 @@ export const expiry = (sanction: Pick<Sanction, 'kind' | 'expires_at'>) =>
     ? date(sanction.expires_at)
     : sanction.kind === 'closed'
       ? 'Permanent'
-      : 'Indefinite';
+      : sanction.kind === 'warning'
+        ? '90 days after acknowledgment'
+        : 'Indefinite';

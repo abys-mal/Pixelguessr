@@ -6,25 +6,26 @@ import { Badge, PageHeading, SignInPrompt, StatusMessage } from '../components/u
 import { RankedReveal } from '../games/RankedReveal';
 import { connectRanked, rankedApi, type ConnectionStatus, type QueueState } from '../games/ranked';
 import { useRanked, useServerTime } from '../games/useRanked';
+import { SanctionAccessNotice } from '../components/SanctionAccessNotice';
+import { restrictedSanction } from '../components/sanctionAccess';
 import './ranked-presentation.css';
 
 export function RankedEntry() {
   const { user, loading, restrictions } = useAuth();
   if (loading) return <StatusMessage>Loading account…</StatusMessage>;
   if (!user) return <SignInPrompt feature="play Ranked Duel" />;
-  if (restrictions?.blocked || restrictions?.probation || restrictions?.suspension)
-    return (
-      <StatusMessage error>
-        Resolve your <Link to="/settings">account notice</Link> before playing Ranked Duel.
-      </StatusMessage>
-    );
-  return <RankedQueue />;
+  const restriction = restrictedSanction(restrictions, 'ranked');
+  return (
+    <RankedQueue key={restriction && restriction !== 'warning' ? 'restricted' : 'available'} />
+  );
 }
 function RankedQueue() {
-  const { user } = useAuth();
+  const { user, restrictions } = useAuth();
+  const restriction = restrictedSanction(restrictions, 'ranked');
+  const unavailable = !!restriction && restriction !== 'warning';
   const navigate = useNavigate();
   const [queue, setQueue] = useState<QueueState | null>(null);
-  const [pending, setPending] = useState(true);
+  const [pending, setPending] = useState(!unavailable);
   const [error, setError] = useState('');
   const [connection, setConnection] = useState<ConnectionStatus>('Connecting');
   const ticket = queue?.status === 'searching' ? queue.ticket : null;
@@ -49,6 +50,9 @@ function RankedQueue() {
     [navigate],
   );
   useEffect(() => {
+    if (unavailable) {
+      return;
+    }
     let disposed = false;
     void rankedApi
       .queue()
@@ -64,7 +68,7 @@ function RankedQueue() {
     return () => {
       disposed = true;
     };
-  }, [receive]);
+  }, [receive, unavailable]);
   useEffect(() => {
     if (!ticket) return;
     return connectRanked<QueueState>(`/ws/ranked/queue/${ticket}/`, receive, setConnection, (err) =>
@@ -81,6 +85,7 @@ function RankedQueue() {
   }, []);
   const now = useServerTime(ticket ? queue?.server_now : undefined);
   const search = async () => {
+    if (restriction) return;
     if (locked.current) return;
     locked.current = true;
     setPending(true);
@@ -122,6 +127,7 @@ function RankedQueue() {
         </div>
         <p className="eyebrow">YOUR RATING</p>
         <h2>{queue?.rating ?? user?.rating} Elo</h2>
+        <SanctionAccessNotice feature="ranked" />
 
         {ticket ? (
           <>
@@ -142,7 +148,11 @@ function RankedQueue() {
               45-second reveal · One guess per round · First to 4 decisive wins
             </p>
             <p className="ranked-wash">Wash: neither player wins the round. Play another image.</p>
-            <button className="button" disabled={pending} onClick={() => void search()}>
+            <button
+              className="button"
+              disabled={pending || !!restriction}
+              onClick={() => void search()}
+            >
               {pending ? 'Please wait…' : 'Find opponent'}
             </button>
             <p className="ranked-warning">

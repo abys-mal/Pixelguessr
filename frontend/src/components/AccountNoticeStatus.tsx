@@ -23,9 +23,11 @@ export function AccountNoticeStatus({
   };
   const descriptions = {
     suspension: 'Multiplayer and image submissions are restricted. Singleplayer remains available.',
-    probation:
-      'Ranked duels and image submissions are restricted. Parties and singleplayer remain available.',
-    warning: 'Review your latest warning. Gameplay remains available.',
+    probation: restrictions?.unacknowledged_warnings.length
+      ? 'Ranked duels and image submissions are restricted. Acknowledge active warnings before hosting or joining parties. Singleplayer remains available.'
+      : 'Ranked duels and image submissions are restricted. Parties and singleplayer remain available.',
+    warning:
+      'Acknowledge active warnings before entering ranked duels, hosting or joining parties, or contributing images. Singleplayer remains available.',
     good: 'No active restrictions require your attention.',
   };
   return (

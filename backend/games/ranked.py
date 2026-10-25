@@ -18,7 +18,7 @@ from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 from accounts.identity import honorary_title
 from accounts.models import User
 from moderation.models import Sanction
-from moderation.services import account_restrictions
+from moderation.services import account_restrictions, require_warning_acknowledgment
 
 from .models import (
     Match,
@@ -48,7 +48,7 @@ def gate():
         RankedGate.objects.filter(pk=1).update(revision=F("revision") + 1)
 
 
-def eligible(user):
+def eligible(user, *, entering=True):
     if not user or not user.is_authenticated:
         raise PermissionDenied("Sign in to play Ranked Duel.")
     restrictions = account_restrictions(user)
@@ -56,6 +56,8 @@ def eligible(user):
         raise PermissionDenied(
             "Ranked duels are unavailable during probation, suspension, or account closure."
         )
+    if entering and restrictions["unacknowledged_warnings"]:
+        require_warning_acknowledgment(user)
 
 
 def owned(user, match_id):
@@ -379,7 +381,7 @@ def enforce_queue(user_id):
 
 
 def queue_state(user, ticket=None, heartbeat=False, cancel=False, connection_id=None):
-    eligible(user)
+    eligible(user, entering=False)
     with transaction.atomic():
         gate()
         now = timezone.now()
@@ -565,7 +567,7 @@ def submit(user, match_id, round_id, text, request_id):
         now = timezone.now()
         reconcile(match, now)
         try:
-            eligible(user)
+            eligible(user, entering=False)
             if match.status != Match.Status.ACTIVE:
                 raise GameError("This match has finished.", "match_complete")
             game_round = current_round(match)
@@ -731,7 +733,7 @@ def image(user, match_id, round_id):
     else:
         # Commit due transitions even when the requested image is later refused.
         state(user, match_id)
-        eligible(user)
+        eligible(user, entering=False)
         with transaction.atomic():
             gate()
             match = owned(user, match_id)

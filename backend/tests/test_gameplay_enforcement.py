@@ -166,7 +166,7 @@ def issue(user, staff, kind, **kwargs):
 @pytest.mark.parametrize(
     "kind,login,solo,party,duel,upload",
     [
-        ("warning", 200, 201, 201, 201, 201),
+        ("warning", 200, 201, 403, 403, 403),
         ("probation", 200, 201, 201, 403, 403),
         ("suspension", 200, 201, 403, 403, 403),
         ("closed", 400, 403, 403, 403, 403),

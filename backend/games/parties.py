@@ -176,6 +176,9 @@ def add_member(party, request, now):
         existing.last_seen = now
         existing.save(update_fields=["last_seen"])
         return existing
+    from moderation.services import require_warning_acknowledgment
+
+    require_warning_acknowledgment(request.user)
     if party.status != Party.Status.LOBBY:
         raise GameError("This game has started or ended. Join a new party.", "match_started")
     if party.members.filter(left_at__isnull=True).count() >= MAX_PLAYERS:
@@ -265,6 +268,9 @@ def create_party(request, data):
         if existing:
             member_for(existing, request)
             return existing.code
+        from moderation.services import require_warning_acknowledgment
+
+        require_warning_acknowledgment(request.user)
         while True:
             code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
             try:
@@ -441,6 +447,18 @@ def start_party(request, code, request_id):
         )
         if len(members) < 2:
             raise GameError("At least two players are needed to start.", "not_enough_players")
+        from moderation.services import account_restrictions, require_warning_acknowledgment
+
+        require_warning_acknowledgment(request.user)
+        if any(
+            item.user_id and account_restrictions(item.user)["unacknowledged_warnings"]
+            for item in members
+        ):
+            raise GameError(
+                "All party members must review their Account Notices before a new game can start.",
+                "party_account_notice",
+                403,
+            )
         images = approved_images()
         match = Match.objects.create(
             mode=Match.Mode.PARTY, status=Match.Status.ACTIVE, party_round_limit=party.round_limit

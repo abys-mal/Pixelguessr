@@ -133,6 +133,22 @@ def _reverse_locked(actor, sanction_id, user_id):
 
 
 @transaction.atomic
+def acknowledge_warning(user, sanction_id):
+    # Share the sanction writer lock with reversal/replacement and concurrent retries.
+    target = lock_player(user.pk)
+    warnings = active_sanctions(target).filter(pk=sanction_id, kind=Sanction.Kind.WARNING)
+    now = timezone.now()
+    warnings.filter(acknowledged_at__isnull=True).update(
+        acknowledged_at=now, expires_at=now + timedelta(days=90)
+    )
+    sanction = get_object_or_404(warnings)
+    from .enforcement import schedule
+
+    schedule(target.pk)
+    return sanction
+
+
+@transaction.atomic
 def submit_appeal(user, sanction_id, explanation):
     user = lock_player(user.pk)
     sanction = get_object_or_404(Sanction, user=user, pk=sanction_id)

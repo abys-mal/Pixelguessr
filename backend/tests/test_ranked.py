@@ -580,9 +580,6 @@ def test_moderation_blocks_ranked_queue(images, user, staff, kind):
     Sanction.objects.create(
         user=user, issued_by=staff, category="fair_play", kind=kind, reason="Test restriction"
     )
-    if kind == "warning":
-        assert ranked.queue_join(user, uuid.uuid4())["status"] == "searching"
-        return
     with pytest.raises(APIException):
         ranked.queue_join(user, uuid.uuid4())
     assert not RankedQueue.objects.filter(queued_at__isnull=False).exists()
@@ -948,9 +945,7 @@ def test_sanction_imposed_during_queue_removes_search_without_match(images, user
         user=user, issued_by=staff, kind=kind, category="fair_play", reason="Queue audit"
     )
     ranked.clock_tick()
-    assert RankedQueue.objects.filter(user=user, queued_at__isnull=False).exists() == (
-        kind == "warning"
-    )
+    assert not RankedQueue.objects.filter(user=user, queued_at__isnull=False).exists()
     assert not Match.objects.filter(mode="ranked").exists()
 
 

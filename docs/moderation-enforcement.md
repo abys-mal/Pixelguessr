@@ -4,15 +4,31 @@ Current policy supersedes historical warning gates and suspension login blocks.
 
 | Sanction | Singleplayer | Parties | Ranked | Image submissions | Normal account |
 | --- | --- | --- | --- | --- | --- |
-| Unacknowledged warning | Allowed | Allowed | Allowed | Allowed | Allowed |
+| Active unacknowledged warning | Allowed | New entry blocked | New entry blocked | Blocked | Allowed |
 | Probation | Allowed | Allowed | Blocked | Blocked | Allowed |
 | Suspension | Allowed | Blocked | Blocked | Blocked | Allowed |
 | Closure | Blocked | Blocked | Blocked | Blocked | Blocked |
 
-Kinds coexist. Each activity applies all applicable restrictions. Warnings only
-create notices; acknowledgment hides their homepage banner without deleting history.
+Kinds coexist. Each activity applies all applicable restrictions. Active warnings
+require acknowledgment before new ranked duels, party hosting/joining/new games,
+and image contributions. All active unacknowledged warnings must be acknowledged;
+reversed and not-yet-started warnings do not gate entry. Singleplayer, sign-in,
+account support, reports and appeals remain available. Ongoing ranked matches and
+party games can finish and reconnect normally; warnings do not impose forfeits or
+remove party members. New party games wait until every member has acknowledged.
+
+New unacknowledged warnings have no automatic expiry. Their 90-day UTC expiry
+starts at the first acknowledgment. Concurrent/repeated acknowledgment preserves
+that timestamp and expiry. Acknowledgment clears the gate/banner without deleting history.
 Active means started, not reversed, and not expired. The existing unique-active-type
-validation, warning expiry, appeal cooldowns, permissions and audit records remain.
+validation, appeal cooldowns, permissions and audit records remain.
+
+Migration `moderation.0008_warning_acknowledgment_expiry` changes the warning
+constraint and recalculates acknowledged warnings from their acknowledgment time.
+Still-active/scheduled unacknowledged warnings lose the old issuance-based expiry.
+Already-expired unacknowledged warnings stay historical, and reversed warnings
+remain reversed. Apply this migration before running the updated backend; no
+database reset is required.
 
 ## Durable game transitions
 
@@ -21,6 +37,7 @@ then any affected party locks. Native moderation commands and Admin revocation u
 the same order. Enforcement and its audit records commit in the same transaction.
 A failed sanction/audit write rolls back its game changes as well.
 
+Warnings clear queued ranked entry/presence, but do not settle an ongoing duel.
 Probation, suspension and closure clear queued ranked entry/presence and settle an
 active duel as a forfeit, using existing completion/Elo logic and its durable
 exactly-once guard. The opponent wins. Moderation reconciliation runs before normal
@@ -76,13 +93,16 @@ Automated coverage includes the complete activity matrix, credential disclosure,
 active duel/party transitions, Elo idempotency, scheduled restrictions, preserved
 singleplayer, notice privacy/priority/expiry/acknowledgment, normal-session appeals,
 live account changes and file-backed SQLite writer races. Existing permissions,
-replacement/cooldown/audit tests remain in the full suites. No migration is needed.
+replacement/cooldown/audit tests remain in the full suites. Apply migration 0008
+for acknowledgment-based warning expiry.
 
 Use synthetic accounts in a separate development database:
 
 1. Sign in as a player and moderator in separate browser profiles. Keep the player's
-   homepage open. Issue a warning: the banner appears without refresh, gameplay stays
-   available. Acknowledge in Account Notices; the banner disappears and history remains.
+   homepage open. Issue a warning: the banner appears without refresh, new ranked,
+   party and contribution entry is blocked, singleplayer and ongoing games remain
+   available. Acknowledge in Account Notices; the gate/banner clears, expiry becomes
+   acknowledgment + 90 days, and history remains.
 2. Start a duel. Apply probation/suspension/closure. Both clients see the forfeit,
    the opponent wins and each rating changes once, including after reconnect/refresh.
 3. Suspend/close a party host: everyone leaves with a host-specific explanation.

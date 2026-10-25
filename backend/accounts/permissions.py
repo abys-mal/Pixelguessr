@@ -20,6 +20,9 @@ class CanSubmitImages(AccountAccess):
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
             return False
+        from moderation.services import require_warning_acknowledgment
+
+        require_warning_acknowledgment(request.user)
         from moderation.services import account_restrictions
 
         restrictions = account_restrictions(request.user)

@@ -102,7 +102,7 @@ def schedule_cleanup(name):
 
 def create_contribution(actor, data):
     from moderation.administration import audit
-    from moderation.services import account_restrictions
+    from moderation.services import account_restrictions, require_warning_acknowledgment
     from moderation.workspace import lock_player
 
     values = dict(data)
@@ -119,6 +119,7 @@ def create_contribution(actor, data):
     try:
         with transaction.atomic():
             owner = lock_player(actor.pk)
+            require_warning_acknowledgment(owner)
             restrictions = account_restrictions(owner)
             if restrictions["blocked"] or restrictions["suspension"] or restrictions["probation"]:
                 raise PermissionDenied("Image submissions are unavailable for this account.")

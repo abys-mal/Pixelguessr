@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import type { Category } from '../api';
 import { useAuth } from '../auth/context';
 import { PageHeading, SignInPrompt, StatusMessage } from '../components/ui';
@@ -14,6 +13,8 @@ import {
 } from '../contributions/api';
 import { ContributionDetails } from '../contributions/Details';
 import { NewSubmission } from '../contributions/NewSubmission';
+import { SanctionAccessNotice } from '../components/SanctionAccessNotice';
+import { restrictedSanction } from '../components/sanctionAccess';
 import '../contributions/contributions.css';
 
 export function Contributions() {
@@ -38,7 +39,7 @@ function ContributionDashboard() {
     error: categoryError,
     reload: reloadCategories,
   } = useData<Category[]>('/api/library/categories/');
-  const restricted = restrictions?.blocked || restrictions?.probation || restrictions?.suspension;
+  const restricted = !!restrictedSanction(restrictions, 'contributions');
   return (
     <div className="contributions-page">
       <div className="contribution-heading">
@@ -53,12 +54,7 @@ function ContributionDashboard() {
           + New Submission
         </button>
       </div>
-      {restricted && (
-        <p className="message" role="alert">
-          New submissions are unavailable during your account restriction. You can still review your
-          history. <Link to="/account-notices">View account notices</Link>
-        </p>
-      )}
+      <SanctionAccessNotice feature="contributions" />
       {categoryError && (
         <StatusMessage error>
           {categoryError}{' '}

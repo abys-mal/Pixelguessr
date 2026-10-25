@@ -199,8 +199,13 @@ class Sanction(models.Model):
                 name="sanction_expiry_after_start",
             ),
             models.CheckConstraint(
-                condition=~models.Q(kind="warning") | models.Q(expires_at__isnull=False),
-                name="warning_must_expire",
+                condition=~models.Q(kind="warning")
+                | models.Q(acknowledged_at__isnull=True)
+                | models.Q(
+                    expires_at__isnull=False,
+                    expires_at=models.F("acknowledged_at") + timedelta(days=90),
+                ),
+                name="warning_expiry_after_acknowledgment",
             ),
             models.CheckConstraint(
                 condition=~models.Q(kind="closed") | models.Q(expires_at__isnull=True),
@@ -222,8 +227,6 @@ class Sanction(models.Model):
         voluntary = self.origin == "voluntary"
         if voluntary and (self.kind != "closed" or self.user_id != self.issued_by_id):
             raise ValidationError("Voluntary closure must be initiated by its account owner.")
-        if self.kind == self.Kind.WARNING:
-            self.expires_at = self.starts_at + timedelta(days=90)
         if self.kind == self.Kind.CLOSED and self.expires_at:
             raise ValidationError({"expires_at": "Account closure has no expiry."})
         if (
@@ -247,11 +250,27 @@ class Sanction(models.Model):
             type(self)
             .objects.using(self._state.db or "default")
             .filter(pk=self.pk)
-            .values(*imposition_fields, "revoked_by_id", "revoked_at")
+            .values(*imposition_fields, "revoked_by_id", "revoked_at", "acknowledged_at")
             .first()
             if not self._state.adding
             else None
         )
+        if self.kind == self.Kind.WARNING:
+            if self.acknowledged_at:
+                self.expires_at = self.acknowledged_at + timedelta(days=90)
+            elif (
+                original
+                and original["kind"] == self.Kind.WARNING
+                and not original["acknowledged_at"]
+                and (
+                    original["revoked_at"]
+                    or (original["expires_at"] and original["expires_at"] <= timezone.now())
+                )
+            ):
+                # Preserve persisted inactive history, not a newly supplied expiry.
+                self.expires_at = original["expires_at"]
+            else:
+                self.expires_at = None
         # Authorization belongs to the action time; later role removal preserves history.
         issuer_changed = original is None or original["issued_by_id"] != self.issued_by_id
         revocation_changed = (

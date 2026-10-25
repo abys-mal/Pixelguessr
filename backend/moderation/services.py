@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Sanction
 
@@ -27,11 +28,21 @@ def account_restrictions(user):
     }
 
 
+def require_warning_acknowledgment(user):
+    if user and user.is_authenticated and account_restrictions(user)["unacknowledged_warnings"]:
+        raise PermissionDenied(
+            {
+                "detail": "Acknowledge your active warnings in Account Notices before entering ranked duels, hosting or joining parties, or contributing images.",
+                "code": "warning_acknowledgment_required",
+            }
+        )
+
+
 def sanction_notice(sanctions):
     messages = {
         "suspension": "Your account is currently suspended from multiplayer activities. You can still play singleplayer and submit an appeal.",
         "probation": "Your account is on probation. Ranked duels and image submissions are temporarily unavailable.",
-        "warning": "You have an unacknowledged warning. Please review it in your account settings.",
+        "warning": "Acknowledge your active warnings in Account Notices before entering ranked duels, hosting or joining parties, or contributing images.",
     }
     for kind in messages:
         notices = [

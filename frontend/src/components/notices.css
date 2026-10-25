@@ -1,4 +1,49 @@
 /* Player notices share the game palette; no moderation workspace styles leak here. */
+.sanction-access-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 20px;
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--notice-accent);
+  border-radius: 10px;
+  background: var(--notice-wash);
+  text-align: left;
+}
+.sanction-access-notice > div {
+  min-width: 0;
+}
+.sanction-access-notice h3 {
+  margin: 0 0 8px;
+  color: var(--notice-accent);
+  font-size: 17px;
+}
+.sanction-access-notice p {
+  margin: 6px 0;
+  font-size: 14px;
+}
+.sanction-access-notice small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.sanction-access-notice a {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--notice-accent);
+}
+.sanction-access-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--notice-accent);
+}
 .account-notices,
 .notice-summary {
   --notice-accent: #bcb8cc;

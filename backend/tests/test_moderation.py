@@ -7,7 +7,7 @@ from django.utils import timezone
 from accounts.backends import AccountBackend
 from accounts.models import User
 from moderation.models import Sanction
-from moderation.services import account_restrictions
+from moderation.services import account_restrictions, active_sanctions
 
 pytestmark = pytest.mark.django_db
 
@@ -18,25 +18,27 @@ def sanction(user, staff, kind, **kwargs):
     )
 
 
-def test_warning_acknowledgment_and_expiry(client, user, staff, uploaded_submission):
+def test_warning_acknowledgment_and_expiry(client, user, staff, uploaded_submission, monkeypatch):
     warning = sanction(user, staff, "warning")
-    assert warning.expires_at == warning.starts_at + timedelta(days=90)
+    assert warning.expires_at is None
     client.force_authenticate(user)
     assert (
         client.post(
             "/api/library/submissions/", uploaded_submission(), format="multipart"
         ).status_code
-        == 201
+        == 403
     )
     assert client.post(f"/api/moderation/sanctions/{warning.pk}/acknowledge/").status_code == 200
+    warning.refresh_from_db()
+    assert warning.expires_at == warning.acknowledged_at + timedelta(days=90)
     assert (
         client.post(
             "/api/library/submissions/", uploaded_submission(), format="multipart"
         ).status_code
         == 201
     )
-    warning.starts_at = timezone.now() - timedelta(days=91)
-    warning.save()
+    monkeypatch.setattr(timezone, "now", lambda: warning.expires_at)
+    assert not active_sanctions(user).filter(pk=warning.pk).exists()
     assert not account_restrictions(user)["unacknowledged_warnings"]
 
 

@@ -30,11 +30,12 @@ export function About() {
         <h2>A fair place to play</h2>
         <p>
           Moderation covers Fair Play, Sportsmanship and Community Guidelines, and Platform
-          Integrity. Warnings require acknowledgment and expire after 90 days, or earlier after a
-          successful appeal. Probation disables ranked duels and image submissions. Probation and
-          suspensions may be temporary or indefinite. Account closure is permanent unless reversed
-          by an administrator. Sanctions do not require escalation; a full appeals workflow is
-          planned for a later phase.
+          Integrity. Warnings require acknowledgment before new multiplayer games or image
+          contributions and expire 90 days after acknowledgment, or earlier after a successful
+          appeal. Probation disables ranked duels and image submissions. Probation and suspensions
+          may be temporary or indefinite. Account closure is permanent unless reversed by an
+          administrator. Sanctions do not require escalation; a full appeals workflow is planned for
+          a later phase.
         </p>
       </section>
     </>

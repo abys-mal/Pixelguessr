@@ -116,7 +116,7 @@ function SanctionForm({
         </fieldset>
         <p className="mod-muted">
           {kind === 'warning'
-            ? 'Warnings expire after 90 days. Acknowledgment clears the notice; gameplay stays available.'
+            ? 'Warnings require acknowledgment before new ranked duels, party entry, or image contributions. They expire 90 days after acknowledgment; ongoing games can finish.'
             : kind === 'probation'
               ? 'Blocks ranked play and image submissions.'
               : kind === 'suspension'
