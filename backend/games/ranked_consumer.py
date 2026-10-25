@@ -10,12 +10,16 @@ from django.conf import settings
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
+from moderation.ip_socket import IPAccessSocketMixin
+
 from . import ranked
 from .party_consumer import live_request
 from .party_serializers import PartyGuessSerializer
 
 
-class RankedConsumer(AsyncJsonWebsocketConsumer):
+class RankedConsumer(IPAccessSocketMixin, AsyncJsonWebsocketConsumer):
+    ip_activity = "ranked"
+
     async def connect(self):
         headers = dict(self.scope.get("headers", []))
         origin = headers.get(b"origin", b"").decode()
@@ -23,6 +27,8 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
         scheme = "https" if self.scope.get("scheme") == "wss" else "http"
         if origin not in [*settings.CSRF_TRUSTED_ORIGINS, f"{scheme}://{host}"]:
             await self.close(code=4403)
+            return
+        if not await self.check_ip_access():
             return
         self.session_key = self.scope["session"].session_key
         self.connection_id = uuid.uuid4()
@@ -59,6 +65,8 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def push(self, heartbeat=False):
+        if not await self.check_ip_access(notify=True):
+            return False
         try:
             state = await database_sync_to_async(self.read)(heartbeat=heartbeat)
         except APIException as exc:
@@ -106,6 +114,8 @@ class RankedConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=1007)
 
     async def receive_json(self, content, **kwargs):
+        if not await self.check_ip_access(notify=True):
+            return
         if not isinstance(content, dict):
             await self.send_json({"type": "error", "detail": "Send a JSON object."})
             return

@@ -8,6 +8,100 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 
+class IPAccessEntry(models.Model):
+    class ListKind(models.TextChoices):
+        BLACKLIST = "blacklist", "Blacklist"
+        WHITELIST = "whitelist", "Whitelist"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    list_kind = models.CharField(max_length=10, choices=ListKind)
+    address = models.GenericIPAddressField(unpack_ipv4=True)
+    reason = models.TextField(max_length=2000)
+    block_registration = models.BooleanField(default=False)
+    block_login = models.BooleanField(default=False)
+    block_singleplayer = models.BooleanField(default=False)
+    block_parties = models.BooleanField(default=False)
+    block_ranked = models.BooleanField(default=False)
+    block_submissions = models.BooleanField(default=False)
+    block_community = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["list_kind", "address"], name="unique_ip_per_access_list"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(expires_at__isnull=True)
+                | models.Q(expires_at__gt=models.F("created_at")),
+                name="ip_expiry_after_creation",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(list_kind="blacklist")
+                    & (
+                        models.Q(block_registration=True)
+                        | models.Q(block_login=True)
+                        | models.Q(block_singleplayer=True)
+                        | models.Q(block_parties=True)
+                        | models.Q(block_ranked=True)
+                        | models.Q(block_submissions=True)
+                        | models.Q(block_community=True)
+                    )
+                )
+                | (
+                    models.Q(
+                        list_kind="whitelist",
+                        expires_at__isnull=True,
+                        block_registration=False,
+                        block_login=False,
+                        block_singleplayer=False,
+                        block_parties=False,
+                        block_ranked=False,
+                        block_submissions=False,
+                        block_community=False,
+                    )
+                ),
+                name="ip_access_list_configuration",
+            ),
+        ]
+
+    @property
+    def activities(self):
+        from .ip_rules import ACTIVITIES
+
+        return [activity for activity in ACTIVITIES if getattr(self, "block_" + activity)]
+
+    def clean(self):
+        from core.client_ip import ClientIPError, normalize_ip
+
+        try:
+            self.address = normalize_ip(self.address)
+        except ClientIPError as exc:
+            raise ValidationError({"address": str(exc)}) from exc
+        if not self.reason.strip():
+            raise ValidationError({"reason": "An internal reason is required."})
+        if self.list_kind == "blacklist" and not self.activities:
+            raise ValidationError({"activities": "Select at least one activity."})
+        if self.list_kind == "whitelist" and (self.activities or self.expires_at):
+            raise ValidationError("Whitelist entries cannot have restrictions or an expiration.")
+
+    def save(self, *args, **kwargs):
+        from core.client_ip import normalize_ip
+
+        self.address = normalize_ip(self.address)
+        return super().save(*args, **kwargs)
+
+
 class Category(models.TextChoices):
     FAIR_PLAY = "fair_play", "Fair Play"
     SPORTSMANSHIP = "sportsmanship", "Sportsmanship and Community Guidelines"

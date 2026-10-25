@@ -73,6 +73,7 @@ export function ModerationLayout() {
               ['/images', 'Image Library'],
               ['/imports', 'Image Imports'],
               ['/staff', 'Staff & Roles'],
+              ['/ip-management', 'IP Management'],
               ['/audit', 'Audit Log'],
               ['/health', 'System Health'],
             ].map(([path, title]) => (

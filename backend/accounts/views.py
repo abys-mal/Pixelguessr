@@ -48,8 +48,23 @@ class RegisterView(APIView):
         try:
             with transaction.atomic():
                 user = serializer.save()
+                # Registration and login are independent activities. A successful
+                # signup must not silently create a session when login is restricted.
+                from core.client_ip import request_ip
+                from moderation.ip_rules import restrictions_for_ip
+
+                login_allowed = "login" not in restrictions_for_ip(request_ip(request))
         except IntegrityError:
             return Response({"detail": "Username or email is unavailable."}, status=400)
+        if not login_allowed:
+            return Response(
+                {
+                    "user": UserSerializer(user).data,
+                    "login_required": True,
+                    "detail": "Your account was created. Sign-in is unavailable from this network.",
+                },
+                status=status.HTTP_201_CREATED,
+            )
         login(request, user, backend="accounts.backends.AccountBackend")
         return Response({"user": UserSerializer(user).data}, status=status.HTTP_201_CREATED)
 
@@ -65,6 +80,9 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
+        from moderation.ip_rules import enforce_request
+
+        enforce_request(request, "login", user=user)
         login(request, user)
         return Response({"user": UserSerializer(user).data})
 

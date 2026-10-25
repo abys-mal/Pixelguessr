@@ -12,6 +12,7 @@ if not DEBUG and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith("dev-")):
     raise ImproperlyConfigured("Set a strong, unique DJANGO_SECRET_KEY in production.")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["http://localhost:5173"])
+IP_TRUSTED_PROXIES = env.list("IP_TRUSTED_PROXIES", default=[])
 INSTALLED_APPS = [
     "daphne",
     "config.apps.AdministratorConfig",
@@ -34,6 +35,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "moderation.ip_middleware.IPAccessMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

@@ -12,6 +12,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const { user, refresh, loading, dismissClosure } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
   const [closure, setClosure] = useState<ClosureDetails | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -22,6 +23,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     event.preventDefault();
     if (request.current) return;
     setError('');
+    setMessage('');
     dismissClosure?.();
     setClosure(null);
     const form = event.currentTarget;
@@ -34,14 +36,21 @@ export function AuthPage({ register = false }: { register?: boolean }) {
     request.current = controller;
     setPending(true);
     try {
-      await api(`/api/auth/${register ? 'register' : 'login'}/`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      });
+      const result = await api<{ login_required?: boolean }>(
+        `/api/auth/${register ? 'register' : 'login'}/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+          signal: controller.signal,
+        },
+      );
       if (controller.signal.aborted) return;
       form.reset();
       await refresh();
+      if (register && result?.login_required) {
+        setMessage('Your account was created. Sign-in is unavailable from this network.');
+        return;
+      }
       if (!controller.signal.aborted) navigate('/profile');
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -133,6 +142,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           </p>
         )}
         {error && <StatusMessage error>{error}</StatusMessage>}
+        {message && <StatusMessage>{message}</StatusMessage>}
         <button className="button" disabled={pending}>
           {pending ? 'Please wait…' : register ? 'Create account' : 'Sign in'}
           <span aria-hidden="true">↗</span>

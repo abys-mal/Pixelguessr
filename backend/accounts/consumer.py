@@ -9,6 +9,7 @@ from django.conf import settings
 
 from games.party_consumer import live_request
 from moderation.enforcement import account_group
+from moderation.ip_socket import IPAccessSocketMixin
 from moderation.services import session_account
 
 from .session_state import session_payload
@@ -20,7 +21,10 @@ def read_status(session_key):
     return (user.pk if user else None), session_payload(request)
 
 
-class AccountConsumer(AsyncJsonWebsocketConsumer):
+class AccountConsumer(IPAccessSocketMixin, AsyncJsonWebsocketConsumer):
+    ip_activity = None
+    ip_account_socket = True
+
     async def connect(self):
         headers = dict(self.scope.get("headers", []))
         origin = headers.get(b"origin", b"").decode()
@@ -28,6 +32,8 @@ class AccountConsumer(AsyncJsonWebsocketConsumer):
         scheme = "https" if self.scope.get("scheme") == "wss" else "http"
         if origin not in [*settings.CSRF_TRUSTED_ORIGINS, f"{scheme}://{host}"]:
             await self.close(code=4403)
+            return
+        if not await self.check_ip_access():
             return
         self.session_key = self.scope["session"].session_key
         user_id, payload = await database_sync_to_async(read_status)(self.session_key)
@@ -43,6 +49,8 @@ class AccountConsumer(AsyncJsonWebsocketConsumer):
         self.timer = asyncio.create_task(self.tick())
 
     async def push(self):
+        if not await self.check_ip_access(notify=True):
+            return False
         user_id, payload = await database_sync_to_async(read_status)(self.session_key)
         if payload != self.last_payload:
             await self.send_json({"type": "state", "state": payload})

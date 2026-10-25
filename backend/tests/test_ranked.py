@@ -826,9 +826,13 @@ def test_ranked_poll_query_budget(game, user, clock, client):
         with CaptureQueriesContext(connection) as captured:
             operation()
         sql = [q["sql"].strip().upper() for q in captured]
+        ip_checks = sum(q.startswith("SELECT") and "MODERATION_IPACCESSENTRY" in q for q in sql)
+        # Keep the gameplay budget unchanged and separately bound the new security gate.
+        assert ip_checks == (1 if name.startswith("image_") else 0)
         measurements[name] = {
             "queries": len(sql),
-            "selects": sum(q.startswith("SELECT") for q in sql),
+            "selects": sum(q.startswith("SELECT") for q in sql) - ip_checks,
+            "ip_checks": ip_checks,
             "writes": sum(q.startswith(("UPDATE", "INSERT", "DELETE")) for q in sql),
             "gates": sum(q.startswith("UPDATE") and "GAMES_RANKEDGATE" in q for q in sql),
         }

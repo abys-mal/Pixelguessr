@@ -11,6 +11,8 @@ from django.conf import settings
 from django.contrib.auth import get_user
 from rest_framework.exceptions import APIException
 
+from moderation.ip_socket import IPAccessSocketMixin
+
 from .parties import group_name, party_state, submit_party_guess
 from .party_serializers import PartyGuessSerializer
 
@@ -30,7 +32,9 @@ def socket_guess(session_key, code, round_id, text, request_id):
     return submit_party_guess(live_request(session_key), code, round_id, text, request_id)
 
 
-class PartyConsumer(AsyncJsonWebsocketConsumer):
+class PartyConsumer(IPAccessSocketMixin, AsyncJsonWebsocketConsumer):
+    ip_activity = "parties"
+
     async def receive(self, text_data=None, bytes_data=None, **kwargs):
         if bytes_data is not None or len(text_data or "") > 2048:
             await self.close(code=1009)
@@ -47,6 +51,8 @@ class PartyConsumer(AsyncJsonWebsocketConsumer):
         scheme = "https" if self.scope.get("scheme") == "wss" else "http"
         if origin not in [*settings.CSRF_TRUSTED_ORIGINS, f"{scheme}://{host}"]:
             await self.close(code=4403)
+            return
+        if not await self.check_ip_access():
             return
         self.code = self.scope["url_route"]["kwargs"]["code"].upper()
         self.session_key = self.scope["session"].session_key
@@ -74,6 +80,8 @@ class PartyConsumer(AsyncJsonWebsocketConsumer):
         # A durable 15s presence lease handles lost transport and multiple open tabs.
 
     async def push_state(self, heartbeat=False):
+        if not await self.check_ip_access(notify=True):
+            return False
         try:
             state = await database_sync_to_async(socket_state)(
                 self.session_key, self.code, heartbeat=heartbeat
@@ -103,6 +111,8 @@ class PartyConsumer(AsyncJsonWebsocketConsumer):
         await self.push_state()
 
     async def receive_json(self, content, **kwargs):
+        if not await self.check_ip_access(notify=True):
+            return
         if not isinstance(content, dict):
             await self.send_json({"type": "error", "detail": "Send a JSON object."})
             return

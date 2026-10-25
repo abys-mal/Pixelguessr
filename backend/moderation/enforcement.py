@@ -41,12 +41,24 @@ def enforce_locked(user_id):
         mode="ranked", status="active", participants__user_id=user_id
     ):
         ranked.reconcile(match, timezone.now())
-    for code in Party.objects.filter(
-        members__user_id=user_id, members__left_at__isnull=True
-    ).values_list("code", flat=True):
-        with transaction.atomic():
-            party = parties.lock_party(code, allow_closed=True)
-            enforce_party(party, timezone.now())
+    for code in (
+        Party.objects.filter(
+            members__user_id=user_id,
+            members__left_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        .exclude(status__in=[Party.Status.CLOSED, Party.Status.ABORTED])
+        .values_list("code", flat=True)
+    ):
+        try:
+            with transaction.atomic():
+                party = parties.lock_party(code, allow_closed=True)
+                enforce_party(party, timezone.now())
+        except parties.GameError as exc:
+            # Expiry may occur between selection and locking. Roll back only
+            # that party's lock write, not the sanction and its audit record.
+            if exc.detail.get("code") != "party_closed":
+                raise
 
 
 def enforce_party(party, now):

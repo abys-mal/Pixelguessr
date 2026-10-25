@@ -11,6 +11,21 @@ def clean_cache():
     cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def websocket_transport_peer(monkeypatch):
+    # Channels' test communicator omits the transport peer. Real servers provide it;
+    # tests for missing/untrustworthy peers explicitly replace/remove this value.
+    from channels.testing import WebsocketCommunicator
+
+    original = WebsocketCommunicator.__init__
+
+    def initialize(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        self.scope.setdefault("client", ("127.0.0.1", 43210))
+
+    monkeypatch.setattr(WebsocketCommunicator, "__init__", initialize)
+
+
 @pytest.fixture
 def client():
     return APIClient()

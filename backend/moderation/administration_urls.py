@@ -1,8 +1,11 @@
 from django.urls import path
 
 from . import administration_views as views
+from .ip_views import IPDetail, IPList
 
 urlpatterns = [
+    path("ip-access/<str:list_kind>/", IPList.as_view()),
+    path("ip-access/<str:list_kind>/<uuid:pk>/", IPDetail.as_view()),
     path("", views.Overview.as_view()),
     path("staff/", views.Staff.as_view()),
     path("players/", views.PlayerSearch.as_view()),

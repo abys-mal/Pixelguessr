@@ -7,6 +7,7 @@ import pytest
 import test_ranked as ranked_fixtures
 from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
+from django.contrib.auth.models import Permission
 from django.db import close_old_connections, connection
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -15,10 +16,10 @@ from test_ranked import pair
 
 from accounts.models import User
 from games import parties, ranked
-from games.models import Match, Party, RankedQueue
+from games.models import Match, Party, PartyMember, RankedQueue
 from games.ranked_rules import elo_after
 from moderation.enforcement import enforce_user
-from moderation.models import Sanction
+from moderation.models import Activity, Sanction
 from moderation.services import account_restrictions
 
 pytestmark = pytest.mark.django_db
@@ -26,6 +27,127 @@ clock = ranked_fixtures.clock
 images = ranked_fixtures.images
 opponent = ranked_fixtures.opponent
 SOLO = "/api/games/singleplayer/"
+
+
+@pytest.fixture(params=["moderator", "administrator"])
+def sanction_actor(request):
+    actor = User.objects.create_user(username="history_staff", email="history-staff@example.test")
+    if request.param == "administrator":
+        actor.is_staff = actor.is_superuser = True
+        actor.save(update_fields=["is_staff", "is_superuser"])
+    else:
+        actor.user_permissions.add(Permission.objects.get(codename="access_workspace"))
+    return actor
+
+
+def historical_party(user, *, expires_at, status=Party.Status.LOBBY, code="OLD123"):
+    party = Party.objects.create(
+        code=code, create_request_id=uuid.uuid4(), expires_at=expires_at, status=status
+    )
+    member = PartyMember.objects.create(
+        party=party,
+        user=user,
+        display_name=user.username,
+        name_key=user.username.casefold(),
+        last_seen=timezone.now() - timedelta(days=2),
+    )
+    party.host = member
+    party.save(update_fields=["host"])
+    return party
+
+
+def sanction_request(client, actor, user, kind):
+    client.force_login(actor)
+    return client.post(
+        f"/api/moderation/workspace/players/{user.pk}/sanctions/",
+        {"kind": kind, "category": "other", "reason": "Public regression reason"},
+        format="json",
+    )
+
+
+@pytest.mark.parametrize("kind", ["warning", "probation", "suspension", "closed"])
+@pytest.mark.parametrize("history", ["expired", "expired_closed", "boundary"])
+def test_sanction_api_ignores_expired_party_history(
+    client, sanction_actor, user, clock, kind, history
+):
+    party = historical_party(
+        user,
+        expires_at=clock["now"] - timedelta(seconds=0 if history == "boundary" else 1),
+        status=Party.Status.CLOSED if history == "expired_closed" else Party.Status.LOBBY,
+    )
+    before = Party.objects.filter(pk=party.pk).values().get()
+    response = sanction_request(client, sanction_actor, user, kind)
+    assert response.status_code == 201, response.content
+    sanction = Sanction.objects.get(user=user, kind=kind)
+    assert (
+        sanction.reason == "Public regression reason" and sanction.issued_by_id == sanction_actor.pk
+    )
+    assert (
+        Activity.objects.filter(
+            sanction=sanction, actor=sanction_actor, action="sanction_issued"
+        ).count()
+        == 1
+    )
+    assert Party.objects.filter(pk=party.pk).values().get() == before
+    assert party.members.get(user=user).left_at is None
+
+
+def test_sanction_survives_party_expiring_after_selection(
+    client, sanction_actor, user, clock, monkeypatch
+):
+    party = historical_party(user, expires_at=clock["now"] + timedelta(seconds=1))
+    lock = parties.lock_party
+    calls = []
+
+    def expire_before_lock(code, **kwargs):
+        calls.append(code)
+        clock["now"] = party.expires_at
+        return lock(code, **kwargs)
+
+    monkeypatch.setattr(parties, "lock_party", expire_before_lock)
+    response = sanction_request(client, sanction_actor, user, "warning")
+    assert response.status_code == 201, response.content
+    assert calls == [party.code]
+    party.refresh_from_db()
+    assert party.revision == 1
+    assert Sanction.objects.filter(user=user, kind="warning").exists()
+
+
+def test_expired_history_does_not_skip_current_party_enforcement(client, sanction_actor, user):
+    old = historical_party(user, expires_at=timezone.now() - timedelta(days=1))
+    host = User.objects.create_user(username="current_host", email="current-host@example.test")
+    live = historical_party(host, expires_at=timezone.now() + timedelta(days=1), code="LIVE12")
+    member = PartyMember.objects.create(
+        party=live,
+        user=user,
+        display_name=user.username,
+        name_key=user.username,
+        last_seen=timezone.now(),
+    )
+    response = sanction_request(client, sanction_actor, user, "suspension")
+    assert response.status_code == 201, response.content
+    member.refresh_from_db()
+    assert member.left_at is not None and member.departure_reason == "suspended"
+    assert live.members.get(user=host).left_at is None
+    old.refresh_from_db()
+    assert old.revision == 1 and old.members.get(user=user).left_at is None
+
+
+def test_sanction_does_not_hide_unrelated_party_errors(
+    client, sanction_actor, user, clock, monkeypatch
+):
+    from games.services import GameError
+
+    historical_party(user, expires_at=clock["now"] + timedelta(days=1))
+
+    def unexpected(*args, **kwargs):
+        raise GameError("Unexpected party error", "unexpected_party_error", 409)
+
+    monkeypatch.setattr(parties, "lock_party", unexpected)
+    response = sanction_request(client, sanction_actor, user, "warning")
+    assert response.status_code == 409 and response.json()["code"] == "unexpected_party_error"
+    assert not Sanction.objects.filter(user=user).exists()
+    assert not Activity.objects.filter(user=user, action="sanction_issued").exists()
 
 
 def issue(user, staff, kind, **kwargs):

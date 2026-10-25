@@ -24,6 +24,7 @@ import { AdministratorGate, AdministrationOverview } from './administration/Over
 import { ImageLibrary } from './administration/Images';
 import { ImageImports } from './administration/Imports';
 import { StaffRoles } from './administration/Staff';
+import { IPManagement } from './administration/IPManagement';
 import { AuditLog, SystemHealth } from './administration/Operations';
 
 export function App() {
@@ -36,6 +37,7 @@ export function App() {
           <Route path="imports" element={<ImageImports key="list" />} />
           <Route path="imports/:id" element={<ImageImports key="detail" />} />
           <Route path="staff" element={<StaffRoles />} />
+          <Route path="ip-management" element={<IPManagement />} />
           <Route path="audit" element={<AuditLog />} />
           <Route path="health" element={<SystemHealth />} />
         </Route>
