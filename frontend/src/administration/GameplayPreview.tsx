@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { createRequestId } from '../requestId';
 
 export function GameplayPreview({ url }: { url: string }) {
-  const [run, setRun] = useState(() => crypto.randomUUID());
+  const [run, setRun] = useState(createRequestId);
   const [reveal, setReveal] = useState(200);
   const [duration, setDuration] = useState(45);
   const [playing, setPlaying] = useState(false);
@@ -19,7 +20,7 @@ export function GameplayPreview({ url }: { url: string }) {
     return () => clearInterval(timer);
   }, [playing, duration]);
   const restart = () => {
-    setRun(crypto.randomUUID());
+    setRun(createRequestId());
     setReveal(0);
     started.current = performance.now();
     setPlaying(true);

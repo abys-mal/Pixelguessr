@@ -178,6 +178,39 @@ beforeEach(() => {
 });
 
 describe('Multiplayer parties', () => {
+  it.each(['/party/join', '/party/new'])(
+    'opens %s and enters a party over HTTP LAN without crypto.randomUUID',
+    async (route) => {
+      const nativeCrypto = globalThis.crypto;
+      vi.stubGlobal('crypto', {
+        getRandomValues: nativeCrypto.getRandomValues.bind(nativeCrypto),
+      });
+      try {
+        const user = userEvent.setup();
+        page(route);
+        if (route === '/party/join') {
+          await user.type(screen.getByLabelText('Party code'), 'K7M2Q9');
+          await user.click(screen.getByRole('button', { name: 'Join Party' }));
+          expect(partyApi.join).toHaveBeenCalledWith('K7M2Q9');
+        } else {
+          await user.click(screen.getByRole('button', { name: 'Create Party' }));
+          expect(partyApi.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              request_id: expect.stringMatching(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+              ),
+            }),
+          );
+        }
+        await screen.findByRole('heading', { name: 'Party lobby' });
+        await user.click(screen.getByRole('button', { name: 'Start Game' }));
+        await screen.findByLabelText('Your Guess');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it.each(['playing', 'complete'] as const)(
     'paints the completed image before %s results without accepting late guesses',
     async (status) => {

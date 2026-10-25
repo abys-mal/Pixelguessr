@@ -7,6 +7,7 @@ import { partyApi, type PartyState, type PartyScore } from '../games/parties';
 import { useParty } from '../games/useParty';
 import { SanctionAccessNotice } from '../components/SanctionAccessNotice';
 import { restrictedSanction } from '../components/sanctionAccess';
+import { createRequestId } from '../requestId';
 
 function PartyLinks() {
   return (
@@ -82,7 +83,7 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
   const [rounds, setRounds] = useState(10);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const requestId = useRef(crypto.randomUUID());
+  const [requestId] = useState(createRequestId);
   const lock = useRef(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -96,7 +97,7 @@ export function PartyEntry({ create = false }: { create?: boolean }) {
         ? await partyApi.create({
             reveal_seconds: seconds,
             round_limit: rounds,
-            request_id: requestId.current,
+            request_id: requestId,
           })
         : await partyApi.join(code.trim().toUpperCase());
       navigate(`/party/${state.code}`);

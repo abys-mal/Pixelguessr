@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ServerClock } from './serverClock';
 import { ApiError } from '../api';
+import { createRequestId } from '../requestId';
 import { connectRanked, rankedApi, type ConnectionStatus, type DuelState } from './ranked';
 export function useRanked(id: string) {
   const [clock] = useState(() => new ServerClock());
@@ -97,7 +98,7 @@ export function useRanked(id: string) {
     setPending(true);
     setError('');
     try {
-      receive((await rankedApi.guess(id, round.id, text, crypto.randomUUID())).state);
+      receive((await rankedApi.guess(id, round.id, text, createRequestId())).state);
     } catch (err) {
       setError((err as Error).message);
       try {

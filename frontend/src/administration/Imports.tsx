@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type Page } from '../api';
+import { createRequestId } from '../requestId';
 import { Feedback, Heading, Loading, Pager } from '../moderation/components';
 import { usePageData } from '../moderation/usePageData';
 import { adminRoot, send, type Batch, type ImportItem, type LibraryImage } from './api';
@@ -35,7 +36,7 @@ export function ImageImports() {
   const addFiles = (incoming: File[]) =>
     setFiles((previous) => [
       ...previous,
-      ...incoming.map((file) => ({ id: crypto.randomUUID(), file })),
+      ...incoming.map((file) => ({ id: createRequestId(), file })),
     ]);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
@@ -59,7 +60,7 @@ export function ImageImports() {
       for (let index = 0; index < files.length; index++) {
         setProgress(`Uploading ${index + 1} of ${files.length}: ${files[index].file.name}`);
         const body = new FormData();
-        body.append('request_id', crypto.randomUUID());
+        body.append('request_id', createRequestId());
         body.append('file', files[index].file);
         for (const [key, value] of metadata) {
           if (typeof value === 'string' && value.trim()) body.set(key, value);

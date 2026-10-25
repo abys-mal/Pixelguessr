@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
+import { createRequestId } from '../requestId';
 import { connectParty, partyApi, type PartyConnection, type PartyState } from './parties';
 
 export function useParty(code: string) {
@@ -158,7 +159,7 @@ export function useParty(code: string) {
     lock.current = true;
     setBusy(true);
     setError('');
-    const requestId = requests.current.get(key) ?? crypto.randomUUID();
+    const requestId = requests.current.get(key) ?? createRequestId();
     requests.current.set(key, requestId);
     try {
       accept(await action(requestId));

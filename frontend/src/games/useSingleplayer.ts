@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
+import { createRequestId } from '../requestId';
 import { gameApi, type GameState } from './singleplayer';
 
 const initial: GameState = { round: null, session: null };
@@ -110,7 +111,7 @@ export function useSingleplayer() {
     setEmpty(false);
     const id = latest.current.round?.id ?? '';
     const key = `${action}:${id}:${text}`;
-    requests.current[key] ??= crypto.randomUUID();
+    requests.current[key] ??= createRequestId();
     try {
       const next =
         action === 'start'

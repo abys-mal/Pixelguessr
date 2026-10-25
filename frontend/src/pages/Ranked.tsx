@@ -8,6 +8,7 @@ import { connectRanked, rankedApi, type ConnectionStatus, type QueueState } from
 import { useRanked, useServerTime } from '../games/useRanked';
 import { SanctionAccessNotice } from '../components/SanctionAccessNotice';
 import { restrictedSanction } from '../components/sanctionAccess';
+import { createRequestId } from '../requestId';
 import './ranked-presentation.css';
 
 export function RankedEntry() {
@@ -91,7 +92,7 @@ function RankedQueue() {
     setPending(true);
     setError('');
     try {
-      receive(await rankedApi.join(crypto.randomUUID()));
+      receive(await rankedApi.join(createRequestId()));
     } catch (err) {
       setError((err as Error).message);
       try {
