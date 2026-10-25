@@ -164,18 +164,33 @@ def submit_appeal(user, sanction_id, explanation):
     return appeal
 
 
-def review_appeal(actor, appeal_id, decision, closing_reason=""):
+def review_appeal(actor, appeal_id, decision, closing_reason="", *, confirm_own_uphold=False):
     snapshot = get_object_or_404(Appeal, pk=appeal_id)
-    return _review_appeal_locked(actor, appeal_id, decision, snapshot.user_id, closing_reason)
+    return _review_appeal_locked(
+        actor, appeal_id, decision, snapshot.user_id, closing_reason, confirm_own_uphold
+    )
 
 
 @transaction.atomic
-def _review_appeal_locked(actor, appeal_id, decision, user_id, closing_reason=""):
+def _review_appeal_locked(
+    actor, appeal_id, decision, user_id, closing_reason="", confirm_own_uphold=False
+):
     target = lock_player(user_id)
     authorize(actor, target)
     appeal = Appeal.objects.select_related("sanction").get(pk=appeal_id)
     if appeal.status != "pending":
         raise ValidationError({"detail": "This appeal has already been resolved."})
+    if (
+        decision == "uphold"
+        and appeal.sanction.issued_by_id == actor.pk
+        and confirm_own_uphold is not True
+    ):
+        raise ValidationError(
+            {
+                "code": "own_uphold_confirmation_required",
+                "detail": "You originally issued this sanction. Please confirm the uphold decision.",
+            }
+        )
     if not active_sanctions(target).filter(pk=appeal.sanction_id).exists():
         appeal.status = "sanction_changed"
     else:

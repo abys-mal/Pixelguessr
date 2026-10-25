@@ -76,6 +76,45 @@ Open http://localhost:5173. Vite proxies `/api` and `/ws` to Django; this preser
 
 Existing `.venv`, `.env`, and `frontend/node_modules` are already prepared in this local checkout; installation commands are needed only for a fresh setup.
 
+### Access from another device on your LAN (Windows)
+
+Run `ipconfig` and find the IPv4 address of your active Wi-Fi/Ethernet adapter. In the root `.env`, set your actual address, for example:
+
+```dotenv
+DEV_LAN_IP=192.168.1.50
+DEV_FRONTEND_PORT=5173
+```
+
+These development-only values extend `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`, preserving localhost access. They require `DEBUG=True`; unset `DEV_LAN_IP` in production. You can also configure the existing lists explicitly, for example `ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.50` and `CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://192.168.1.50:5173`. Origins must include the scheme and actual frontend port; hosts must not include either.
+
+From the repository root, start Django:
+
+```powershell
+cd C:\Users\actian\source\Pixelguessr
+.\.venv\Scripts\python.exe scripts/run_dev.py --lan
+```
+
+This binds Django to `0.0.0.0:8000`. The equivalent command from `backend` is `..\.venv\Scripts\python.exe manage.py runserver 0.0.0.0:8000`. Omit `--lan` for loopback-only Django access. In a separate terminal:
+
+```powershell
+cd C:\Users\actian\source\Pixelguessr\frontend
+npm run dev
+```
+
+Keep `party_clock` and `ranked_clock` running as described above/below. Open **http://192.168.1.50:5173** on the other device, substituting your address. `0.0.0.0` is a listening address, not a browser URL. Restart Django and Vite after changing the environment. If you change the frontend port, use `DEV_FRONTEND_PORT` so Django's development origins and Vite agree.
+
+Vite preserves the browser Host, Origin, cookies and CSRF headers for `/api`, `/admin`, `/static` and `/ws`. API requests use relative paths; WebSockets use the browser's current host. No CORS setting or separate backend URL is needed. Each hostname/IP has its own browser cookies, so sign in again when switching from localhost to the LAN address.
+
+For the default local backend target, Vite binds outgoing HTTP and WebSocket connections to **127.0.0.2** and replaces forwarded-IP headers with the actual connecting browser address. Django trusts exactly `127.0.0.2/32` automatically **only in DEBUG mode**. This separates the proxy from localhost browser peers and preserves strict client-IP validation. Do not add the entire LAN or loopback network to `IP_TRUSTED_PROXIES`, and do not whitelist the proxy to work around IP blocks. Direct LAN requests ignore forged forwarding headers. If `API_PROXY_TARGET` points to another machine/container, configure its exact proxy topology separately; the local loopback trust does not cover it. The existing staff exemption, signed-out activity restrictions, and Login session invalidation policy are unchanged.
+
+Troubleshooting:
+
+- **DisallowedHost / HTTP 400:** verify `DEV_LAN_IP` or `ALLOWED_HOSTS` matches the browser address, and restart Django. Do not use wildcard hosts.
+- **CSRF 403:** verify the exact `http://<LAN-IP>:<frontend-port>` origin is trusted; restart both servers, reload and sign in on that address. Keep `DEBUG=True` for local HTTP cookies; never disable CSRF.
+- **Connection refused / proxy ECONNREFUSED:** check both terminals, Django port 8000, Vite port 5173 (or your configured port), and that Django listens on `0.0.0.0`. Leave `API_PROXY_TARGET` unset for the default local setup. A DHCP address change requires updating `DEV_LAN_IP`.
+- **Windows Firewall / device cannot connect:** use a trusted Private network profile and allow Node.js on Private networks, or allow inbound TCP for the frontend port scoped to Local subnet. Direct backend access additionally needs Python/TCP 8000 allowed. Do not disable the firewall or open these development ports on Public networks. Guest Wi-Fi/client isolation, VPNs or different subnets can also prevent access.
+- **client_ip_unavailable:** restart both updated servers; remove broad local proxy ranges and use the exact development alias above. Production still requires explicit sanitized reverse-proxy configuration.
+
 The lightweight mode is explicitly development-only: `DEBUG=True`, `USE_SQLITE=True`, `LOCAL_SERVICES=True`. The environment helper preserves an existing `.env`; edit those flags yourself if switching modes. To use real services locally, start `docker compose up -d db redis`, set both fallback flags to `False`, and keep the default localhost database/Redis URLs. SQLite and PostgreSQL are separate databases; switching does not copy data. On macOS/Linux use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.
 
 Run a fourth terminal for durable ranked deadlines (in addition to the existing party clock):

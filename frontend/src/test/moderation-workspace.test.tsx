@@ -75,6 +75,7 @@ beforeEach(() => {
   };
   appeal = {
     id: 'appeal-id',
+    reviewer_is_issuer: false,
     player,
     sanction: warning,
     kind: 'warning',
@@ -456,6 +457,91 @@ it('upholds an appeal alongside the original sanction and explanation', async ()
   expect(seen.find(([path]) => path.endsWith('/appeal-id/resolve/'))?.[1]?.body).toBe(
     JSON.stringify({ decision: 'uphold', closing_reason: '' }),
   );
+});
+
+it('reminds the original issuer and requires one cancellable uphold confirmation', async () => {
+  appeal.reviewer_is_issuer = true;
+  warning.issued_by = 'previous-name';
+  page('/moderation/appeals');
+  expect(await screen.findByRole('note')).toHaveTextContent('You issued this sanction');
+  await userEvent.click(screen.getByRole('button', { name: 'Uphold' }));
+  let dialog = screen.getByRole('dialog', { name: 'Confirm uphold decision' });
+  expect(dialog).toHaveTextContent(
+    'You originally issued this sanction. Would you still like to uphold it?',
+  );
+  expect(seen.filter(([path]) => path.endsWith('/resolve/'))).toHaveLength(0);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Go back' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(seen.filter(([path]) => path.endsWith('/resolve/'))).toHaveLength(0);
+  await userEvent.click(screen.getByRole('button', { name: 'Uphold' }));
+  dialog = screen.getByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm uphold' }));
+  await screen.findByText('Review saved.');
+  const submissions = seen.filter(([path]) => path.endsWith('/resolve/'));
+  expect(submissions).toHaveLength(1);
+  expect(JSON.parse(String(submissions[0][1]?.body))).toEqual({
+    decision: 'uphold',
+    closing_reason: '',
+    confirm_own_uphold: true,
+  });
+});
+
+it('uses the server relationship even when the displayed issuer name matches the reviewer', async () => {
+  warning.issued_by = moderator.username;
+  page('/moderation/appeals');
+  await userEvent.click(await screen.findByRole('button', { name: 'Uphold' }));
+  expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await screen.findByText('Review saved.');
+});
+
+it('keeps the existing reversal workflow when reviewing an originally issued sanction', async () => {
+  appeal.reviewer_is_issuer = true;
+  page('/moderation/appeals');
+  await userEvent.click(await screen.findByRole('button', { name: 'Reverse sanction' }));
+  const dialog = screen.getByRole('dialog', { name: 'Reverse the appealed sanction?' });
+  expect(within(dialog).queryByText('Confirm uphold')).not.toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Reverse sanction' }));
+  await screen.findByText('Review saved.');
+  expect(JSON.parse(String(seen.find(([path]) => path.endsWith('/resolve/'))?.[1]?.body))).toEqual({
+    decision: 'reverse',
+    closing_reason: '',
+  });
+});
+
+it('disables confirmation while saving and prevents duplicate appeal submissions', async () => {
+  appeal.reviewer_is_issuer = true;
+  let finish!: () => void;
+  const fallback = vi.mocked(api).getMockImplementation()!;
+  vi.mocked(api).mockImplementation((path, options) => {
+    if (path.endsWith('/resolve/')) {
+      seen.push([path, options]);
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    }
+    return fallback(path, options);
+  });
+  page('/moderation/appeals');
+  await userEvent.click(await screen.findByRole('button', { name: 'Uphold' }));
+  const dialog = screen.getByRole('dialog');
+  const confirm = within(dialog).getByRole('button', { name: 'Confirm uphold' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(within(dialog).getByRole('button', { name: 'Saving…' })).toBeDisabled();
+  expect(within(dialog).getByRole('button', { name: 'Go back' })).toBeDisabled();
+  expect(seen.filter(([path]) => path.endsWith('/resolve/'))).toHaveLength(1);
+  finish();
+  await screen.findByText('Review saved.');
+});
+
+it('does not show an issuer reminder on a resolved historical appeal', async () => {
+  appeal.reviewer_is_issuer = true;
+  appeal.status = 'upheld';
+  page('/moderation/appeals');
+  await screen.findByRole('heading', { name: 'Original warning' });
+  expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Uphold' })).not.toBeInTheDocument();
 });
 
 it('reports API failures without pretending a reversal succeeded', async () => {

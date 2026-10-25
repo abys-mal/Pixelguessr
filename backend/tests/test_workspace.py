@@ -560,7 +560,7 @@ def test_audit_failure_rolls_back_mutation(moderator, user, monkeypatch, action)
 def test_warning_appeal_one_per_record_and_no_second_after_review(moderator, user):
     first = sanction(moderator, user)
     appeal = submit_appeal(user, first.pk, "Please review.")
-    review_appeal(moderator, appeal.pk, "uphold")
+    review_appeal(moderator, appeal.pk, "uphold", confirm_own_uphold=True)
     with pytest.raises(ValidationError):
         submit_appeal(user, first.pk, "Again.")
     second = sanction(moderator, user)
@@ -587,7 +587,7 @@ def test_cooldown_starts_at_upheld_decision_and_survives_replacement(
     assert "pending" in eligibility(user, original)["detail"]
     with pytest.raises(ValidationError, match="pending"):
         submit_appeal(user, original.pk, "Duplicate.")
-    review_appeal(moderator, appeal.pk, "uphold")
+    review_appeal(moderator, appeal.pk, "uphold", confirm_own_uphold=True)
     appeal.refresh_from_db()
     assert appeal.resolved_at == clock["now"]
     deadline = appeal.resolved_at + timedelta(days=days)
@@ -645,7 +645,7 @@ def test_latest_upheld_decision_controls_only_its_sanction_type(moderator, user,
         )
     other = sanction(moderator, user, "suspension" if kind == "probation" else "probation")
     other_appeal = submit_appeal(user, other.pk, "Different type.")
-    review_appeal(moderator, other_appeal.pk, "uphold")
+    review_appeal(moderator, other_appeal.pk, "uphold", confirm_own_uphold=True)
     assert eligibility(user, notice)["available_at"] == (now + timedelta(days=days - 2)).isoformat()
 
 

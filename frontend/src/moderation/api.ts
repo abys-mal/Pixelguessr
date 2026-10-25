@@ -52,6 +52,7 @@ export interface Report {
 }
 export interface Appeal {
   id: string;
+  reviewer_is_issuer: boolean;
   player: Player;
   sanction: Sanction;
   kind: Kind;

@@ -3,6 +3,8 @@ from pathlib import Path
 import environ
 from django.core.exceptions import ImproperlyConfigured
 
+from config.development import development_network
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(DEBUG=(bool, False), USE_SQLITE=(bool, False), LOCAL_SERVICES=(bool, False))
 environ.Env.read_env(BASE_DIR.parent / ".env")
@@ -11,8 +13,18 @@ SECRET_KEY = env("DJANGO_SECRET_KEY")
 if not DEBUG and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith("dev-")):
     raise ImproperlyConfigured("Set a strong, unique DJANGO_SECRET_KEY in production.")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["http://localhost:5173"])
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS", default=["http://localhost:5173", "http://127.0.0.1:5173"]
+)
 IP_TRUSTED_PROXIES = env.list("IP_TRUSTED_PROXIES", default=[])
+ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, IP_TRUSTED_PROXIES = development_network(
+    debug=DEBUG,
+    hosts=ALLOWED_HOSTS,
+    origins=CSRF_TRUSTED_ORIGINS,
+    proxies=IP_TRUSTED_PROXIES,
+    lan_ip=env("DEV_LAN_IP", default="").strip(),
+    frontend_port=env.int("DEV_FRONTEND_PORT", default=5173),
+)
 INSTALLED_APPS = [
     "daphne",
     "config.apps.AdministratorConfig",

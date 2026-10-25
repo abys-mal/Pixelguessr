@@ -1,17 +1,18 @@
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
+import { developmentProxies } from './devProxy.ts';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: Number(
+      loadEnv(mode, fileURLToPath(new URL('..', import.meta.url)), 'DEV_').DEV_FRONTEND_PORT ||
+        5173,
+    ),
     strictPort: true,
-    proxy: {
-      '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000' },
-      '/admin': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000' },
-      '/static': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000' },
-      '/ws': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000', ws: true },
-    },
+    proxy: developmentProxies(process.env.API_PROXY_TARGET),
   },
   test: { environment: 'jsdom', setupFiles: ['./src/test/setup.ts'], restoreMocks: true },
-});
+}));

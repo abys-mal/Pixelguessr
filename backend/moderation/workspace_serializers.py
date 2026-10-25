@@ -137,6 +137,16 @@ class StaffReport(serializers.ModelSerializer):
 class StaffAppeal(serializers.ModelSerializer):
     player = serializers.SerializerMethodField()
     sanction = StaffSanction()
+    reviewer_is_issuer = serializers.SerializerMethodField()
+
+    def get_reviewer_is_issuer(self, obj):
+        request = self.context.get("request")
+        return bool(
+            request
+            and request.user.is_authenticated
+            and obj.sanction.issued_by_id
+            and obj.sanction.issued_by_id == request.user.pk
+        )
 
     def get_player(self, obj):
         return player_summary(obj.user)
@@ -147,6 +157,7 @@ class StaffAppeal(serializers.ModelSerializer):
             "id",
             "player",
             "sanction",
+            "reviewer_is_issuer",
             "kind",
             "explanation",
             "closing_reason",

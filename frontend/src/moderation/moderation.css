@@ -237,6 +237,17 @@
   flex-wrap: wrap;
   margin-top: 20px;
 }
+.mod-issuer-reminder {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--mod-line);
+  border-radius: 7px;
+  color: var(--mod-muted);
+  font-size: 13px;
+}
+.mod-issuer-reminder p {
+  margin: 6px 0 0;
+}
 .mod-search {
   max-width: 620px;
   margin-bottom: 28px;

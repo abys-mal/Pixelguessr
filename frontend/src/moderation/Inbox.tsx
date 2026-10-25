@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Page } from '../api';
 import { root, post, label, date, expiry, type Appeal, type Report } from './api';
 import { Dialog, Feedback, Heading, Loading, Pager } from './components';
@@ -12,6 +12,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
   const [decision, setDecision] = useState('');
   const [closingReason, setClosingReason] = useState('');
   const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
   const [message, setMessage] = useState('');
   const [actionError, setActionError] = useState('');
   const kind = appeals ? 'appeals' : 'reports';
@@ -21,19 +22,26 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
   );
   const item = data?.results.find((row) => row.id === selected) ?? data?.results[0];
   const player = item ? ('player' in item ? item.player : item.subject) : null;
+  const ownSanction = !!item && 'reviewer_is_issuer' in item && item.reviewer_is_issuer;
   const resolved = item
     ? 'status' in item
       ? item.status !== 'pending'
       : !!item.resolved_at
     : false;
-  const submit = async (choice: string) => {
-    if (pending || !item) return;
+  const submit = async (choice: string, confirmed = false) => {
+    if (submitting.current || !item) return;
+    if (choice === 'uphold' && ownSanction && !confirmed) {
+      setDecision('uphold');
+      return;
+    }
+    submitting.current = true;
     setPending(true);
     setActionError('');
     try {
       await post(`${root}${kind}/${item.id}/resolve/`, {
         decision: choice,
         ...(appeals ? { closing_reason: closingReason } : {}),
+        ...(choice === 'uphold' && ownSanction && confirmed ? { confirm_own_uphold: true } : {}),
       });
       setDecision('');
       setClosingReason('');
@@ -42,6 +50,7 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
     } catch (error) {
       setActionError((error as Error).message);
     } finally {
+      submitting.current = false;
       setPending(false);
     }
   };
@@ -163,43 +172,54 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
                   </label>
                 )}
                 {!resolved && (
-                  <div className="mod-actions">
-                    {appeals ? (
-                      <>
-                        <button
-                          className="mod-button"
-                          disabled={pending}
-                          onClick={() => setDecision('reverse')}
-                        >
-                          Reverse sanction
-                        </button>
-                        <button
-                          className="mod-button subtle"
-                          disabled={pending}
-                          onClick={() => void submit('uphold')}
-                        >
-                          Uphold
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="mod-button"
-                          disabled={pending}
-                          onClick={() => void submit('resolved')}
-                        >
-                          Resolve report
-                        </button>
-                        <button
-                          className="mod-button subtle"
-                          disabled={pending}
-                          onClick={() => void submit('dismissed')}
-                        >
-                          Dismiss
-                        </button>
-                      </>
+                  <>
+                    {appeals && ownSanction && (
+                      <div className="mod-issuer-reminder" role="note">
+                        <strong>You issued this sanction</strong>
+                        <p>
+                          You’re reviewing an appeal involving a sanction you issued. You can
+                          continue as usual, but upholding it will require a quick confirmation.
+                        </p>
+                      </div>
                     )}
-                  </div>
+                    <div className="mod-actions">
+                      {appeals ? (
+                        <>
+                          <button
+                            className="mod-button"
+                            disabled={pending}
+                            onClick={() => setDecision('reverse')}
+                          >
+                            Reverse sanction
+                          </button>
+                          <button
+                            className="mod-button subtle"
+                            disabled={pending}
+                            onClick={() => void submit('uphold')}
+                          >
+                            Uphold
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="mod-button"
+                            disabled={pending}
+                            onClick={() => void submit('resolved')}
+                          >
+                            Resolve report
+                          </button>
+                          <button
+                            className="mod-button subtle"
+                            disabled={pending}
+                            onClick={() => void submit('dismissed')}
+                          >
+                            Dismiss
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
                 {!appeals && (
                   <p className="mod-muted">
@@ -215,13 +235,16 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
       )}
       {decision && (
         <Dialog
-          title="Reverse the appealed sanction?"
+          title={
+            decision === 'uphold' ? 'Confirm uphold decision' : 'Reverse the appealed sanction?'
+          }
           close={() => setDecision('')}
           pending={pending}
         >
           <p>
-            The appeal will be accepted and its sanction reversed. All records and earlier decisions
-            will be preserved.
+            {decision === 'uphold'
+              ? 'You originally issued this sanction. Would you still like to uphold it?'
+              : 'The appeal will be accepted and its sanction reversed. All records and earlier decisions will be preserved.'}
           </p>
           <Feedback error={actionError} />
           <div className="mod-actions">
@@ -230,10 +253,14 @@ export function ModerationInbox({ appeals = false }: { appeals?: boolean }) {
               disabled={pending}
               onClick={() => setDecision('')}
             >
-              Cancel
+              {decision === 'uphold' ? 'Go back' : 'Cancel'}
             </button>
-            <button className="mod-button" disabled={pending} onClick={() => void submit(decision)}>
-              {pending ? 'Saving…' : 'Reverse sanction'}
+            <button
+              className="mod-button"
+              disabled={pending}
+              onClick={() => void submit(decision, true)}
+            >
+              {pending ? 'Saving…' : decision === 'uphold' ? 'Confirm uphold' : 'Reverse sanction'}
             </button>
           </div>
         </Dialog>

@@ -105,11 +105,16 @@ The account-notices socket enforces login restrictions as well as account update
 
 ## Trusted proxy configuration (required before a proxied deployment)
 
-`IP_TRUSTED_PROXIES` defaults to empty. With no configured proxies, the actual
+In production, `IP_TRUSTED_PROXIES` defaults to empty. With no configured proxies, the actual
 transport peer (`REMOTE_ADDR` / ASGI `scope.client`) is the client; arbitrary
 `X-Forwarded-For`, `Forwarded` and `X-Real-IP` cannot override it. This works for
-direct local development. Vite normally proxies all local clients as loopback;
-that is appropriate only for a local prototype, not a public deployment.
+direct local development. In DEBUG mode only, Django additionally trusts exactly
+`127.0.0.2/32`. The local Vite proxy binds outgoing HTTP/WebSocket connections to
+that alias and replaces incoming forwarded-IP headers with the actual browser
+socket peer. Localhost browser peers (`127.0.0.1` / `::1`) remain distinct, and
+LAN clients retain their actual IP for restriction enforcement. Do not trust the
+whole loopback or LAN network. This exact development addition is absent in
+production. See [LAN startup and troubleshooting](../README.md#access-from-another-device-on-your-lan-windows).
 
 For a reverse proxy, set a comma-separated list of actual proxy IPs or strict
 CIDR networks, for example `IP_TRUSTED_PROXIES=10.0.0.10/32,2001:db8:ffff::10/128`

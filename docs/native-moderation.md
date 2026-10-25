@@ -60,6 +60,13 @@ a linked successor. Replacing a closure also requires an administrator because
 replacement reverses the original. Moderators cannot search/review or moderate
 staff, native moderators or administrators; administrators can.
 
+When reviewing an appeal of a sanction they originally issued, staff see a neutral
+reminder beside the decision controls. Uphold requires one additional confirmation;
+reversal and other reviewers retain their existing workflows. The API identifies the
+issuer by account ID and requires `confirm_own_uphold: true` for that issuer's uphold
+decision. Missing/deleted issuers do not trigger the reminder. Authorization, optional
+closing reasons and audit records remain unchanged; duplicate resolutions are rejected.
+
 Players open Account Notices at `/account-notices` using their
 normal authenticated session. Suspension preserves login, settings, appeals and
 singleplayer; probation also preserves parties. Warnings only create notices.

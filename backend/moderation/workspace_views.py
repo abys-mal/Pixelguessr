@@ -39,7 +39,9 @@ def paginate(request, queryset, serializer):
     page = PageNumberPagination()
     page.page_size = 24
     rows = page.paginate_queryset(queryset, request)
-    return page.get_paginated_response(serializer(rows, many=True).data)
+    return page.get_paginated_response(
+        serializer(rows, many=True, context={"request": request}).data
+    )
 
 
 @method_decorator(never_cache, name="dispatch")
@@ -106,6 +108,7 @@ class Player(WorkspaceView):
                         "user", "sanction__issued_by", "sanction__revoked_by"
                     ),
                     many=True,
+                    context={"request": request},
                 ).data,
                 "activity": StaffActivity(
                     user.moderation_activity.select_related("actor"), many=True
@@ -184,7 +187,17 @@ class AppealDecision(WorkspaceView):
         closing_reason = serializers.CharField(max_length=2000, allow_blank=True).run_validation(
             request.data.get("closing_reason", "")
         )
-        return Response(StaffAppeal(review_appeal(request.user, pk, decision, closing_reason)).data)
+        confirmed = serializers.BooleanField().run_validation(
+            request.data.get("confirm_own_uphold", False)
+        )
+        return Response(
+            StaffAppeal(
+                review_appeal(
+                    request.user, pk, decision, closing_reason, confirm_own_uphold=confirmed
+                ),
+                context={"request": request},
+            ).data
+        )
 
 
 class ModeratorAccess(WorkspaceView):
